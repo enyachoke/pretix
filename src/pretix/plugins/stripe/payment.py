@@ -17,9 +17,8 @@ from django.utils.http import urlquote
 from django.utils.translation import pgettext, ugettext, ugettext_lazy as _
 
 from pretix import __version__
-from pretix.base.models import (
-    Event, Order, OrderPayment, OrderRefund, Quota, RequiredAction,
-)
+from pretix.base.decimal import round_decimal
+from pretix.base.models import Event, Order, OrderPayment, OrderRefund, Quota
 from pretix.base.payment import BasePaymentProvider, PaymentException
 from pretix.base.services.mail import SendMailException
 from pretix.base.settings import SettingsSandbox
@@ -232,6 +231,10 @@ class StripeMethod(BasePaymentProvider):
     def payment_prepare(self, request, payment):
         return self.checkout_prepare(request, None)
 
+    def _amount_to_decimal(self, cents):
+        places = settings.CURRENCY_PLACES.get(self.event.currency, 2)
+        return round_decimal(float(cents) / (10 ** places), self.event.currency)
+
     def _get_amount(self, payment):
         places = settings.CURRENCY_PLACES.get(self.event.currency, 2)
         return int(payment.amount * 10 ** places)
@@ -321,19 +324,15 @@ class StripeMethod(BasePaymentProvider):
             raise PaymentException(_('We had trouble communicating with Stripe. Please try again and get in touch '
                                      'with us if this problem persists.'))
         else:
-            ReferencedStripeObject.objects.get_or_create(order=payment.order, reference=charge.id,
-                                                         payment=payment)
+            ReferencedStripeObject.objects.get_or_create(
+                reference=charge.id,
+                defaults={'order': payment.order, 'payment': payment}
+            )
             if charge.status == 'succeeded' and charge.paid:
                 try:
                     payment.info = str(charge)
                     payment.confirm()
                 except Quota.QuotaExceededException as e:
-                    RequiredAction.objects.create(
-                        event=self.event, action_type='pretix.plugins.stripe.overpaid', data=json.dumps({
-                            'order': payment.order.code,
-                            'charge': charge.id
-                        })
-                    )
                     raise PaymentException(str(e))
 
                 except SendMailException:
@@ -439,8 +438,10 @@ class StripeMethod(BasePaymentProvider):
             raise PaymentException(_('We had trouble communicating with Stripe. Please try again and get in touch '
                                      'with us if this problem persists.'))
 
-        ReferencedStripeObject.objects.get_or_create(order=payment.order, reference=source.id,
-                                                     payment=payment)
+        ReferencedStripeObject.objects.get_or_create(
+            reference=source.id,
+            defaults={'order': payment.order, 'payment': payment}
+        )
         payment.info = str(source)
         payment.state = OrderPayment.PAYMENT_STATE_PENDING
         payment.save()
@@ -558,6 +559,10 @@ class StripeCC(StripeMethod):
                             })
                         },
                         **self.api_kwargs
+                    )
+                    ReferencedStripeObject.objects.get_or_create(
+                        reference=source.id,
+                        defaults={'order': payment.order, 'payment': payment}
                     )
                     if source.status == "pending":
                         payment.info = str(source)

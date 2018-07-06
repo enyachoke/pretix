@@ -597,18 +597,9 @@ class PaymentException(Exception):
 
 
 class FreeOrderProvider(BasePaymentProvider):
-
-    @property
-    def is_implicit(self) -> bool:
-        return True
-
-    @property
-    def is_enabled(self) -> bool:
-        return True
-
-    @property
-    def identifier(self) -> str:
-        return "free"
+    is_implicit = True
+    is_enabled = True
+    identifier = "free"
 
     def checkout_confirm_render(self, request: HttpRequest) -> str:
         return _("No payment is required as this order only includes products which are free of charge.")
@@ -620,10 +611,9 @@ class FreeOrderProvider(BasePaymentProvider):
     def verbose_name(self) -> str:
         return _("Free of charge")
 
-    def payment_perform(self, request: HttpRequest, order: Order):
-        from pretix.base.services.orders import mark_order_paid
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment):
         try:
-            mark_order_paid(order, 'free', send_mail=False)
+            payment.confirm()
         except Quota.QuotaExceededException as e:
             raise PaymentException(str(e))
 
@@ -631,32 +621,7 @@ class FreeOrderProvider(BasePaymentProvider):
     def settings_form_fields(self) -> dict:
         return {}
 
-    def order_control_refund_render(self, order: Order) -> str:
-        return ''
-
-    def order_control_refund_perform(self, request: HttpRequest, order: Order) -> Union[bool, str]:
-        """
-        Will be called if the event administrator confirms the refund.
-
-        This should transfer the money back (if possible). You can return the URL the
-        user should be redirected to if you need special behavior or None to continue
-        with default behavior.
-
-        On failure, you should use Django's message framework to display an error message
-        to the user.
-
-        The default implementation sets the Order's state to refunded and shows a success
-        message.
-
-        :param request: The HTTP request
-        :param order: The order object
-        """
-        from pretix.base.services.orders import mark_order_refunded
-
-        mark_order_refunded(order, user=request.user)
-        messages.success(request, _('The order has been marked as refunded.'))
-
-    def is_allowed(self, request: HttpRequest, total: Decimal) -> bool:
+    def is_allowed(self, request: HttpRequest, total: Decimal=None) -> bool:
         from .services.cart import get_fees
 
         total = get_cart_total(request)
@@ -673,10 +638,9 @@ class BoxOfficeProvider(BasePaymentProvider):
     identifier = "boxoffice"
     verbose_name = _("Box office")
 
-    def payment_perform(self, request: HttpRequest, order: Order):
-        from pretix.base.services.orders import mark_order_paid
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment):
         try:
-            mark_order_paid(order, 'boxoffice', send_mail=False)
+            payment.confirm()
         except Quota.QuotaExceededException as e:
             raise PaymentException(str(e))
 
@@ -693,7 +657,7 @@ class BoxOfficeProvider(BasePaymentProvider):
         mark_order_refunded(order, user=request.user)
         messages.success(request, _('The order has been marked as refunded.'))
 
-    def is_allowed(self, request: HttpRequest, total: Decimal) -> bool:
+    def is_allowed(self, request: HttpRequest, total: Decimal=None) -> bool:
         return False
 
     def order_change_allowed(self, order: Order) -> bool:

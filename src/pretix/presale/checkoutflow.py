@@ -484,7 +484,7 @@ class PaymentStep(QuestionsViewMixin, CartMixin, TemplateFlowStep):
         try:
             return prov.is_allowed(request, total=self._total_order_value)
         except TypeError:
-            return prov.is_allowed(request)
+            return prov.is_allowed(request, )
 
     def is_completed(self, request, warn=False):
         self.request = request

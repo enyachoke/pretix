@@ -518,8 +518,9 @@ class OrderTransition(OrderView):
         to = self.request.POST.get('status', '')
         if self.order.status in (Order.STATUS_PENDING, Order.STATUS_EXPIRED) and to == 'p':
             self.order.payments.filter(state__in=(OrderPayment.PAYMENT_STATE_PENDING,
-                                                  OrderPayment.PAYMENT_STATE_CONFIRMED)) \
+                                                  OrderPayment.PAYMENT_STATE_CREATED)) \
                 .update(state=OrderPayment.PAYMENT_STATE_CANCELED)
+            # TODO: if the last payment is manual, keep it
             ps = self.order.pending_sum
             if ps:
                 p = self.order.payments.create(

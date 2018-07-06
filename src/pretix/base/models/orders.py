@@ -925,6 +925,18 @@ class OrderPayment(models.Model):
             self.local_id = (self.order.payments.aggregate(m=Max('local_id'))['m'] or 0) + 1
         super().save(*args, **kwargs)
 
+    def create_external_refund(self, amount=None, execution_date=None, info='{}'):
+        return self.order.refunds.create(
+            state=OrderRefund.REFUND_STATE_EXTERNAL,
+            source=OrderRefund.REFUND_SOURCE_EXTERNAL,
+            amount=amount if amount is not None else self.amount,
+            order=self.order,
+            payment=self,
+            execution_date=execution_date or now(),
+            provider=self.provider,
+            info=info
+        )
+
 
 class OrderRefund(models.Model):
     """

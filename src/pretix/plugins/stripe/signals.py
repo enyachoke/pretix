@@ -11,7 +11,7 @@ from pretix.base.settings import settings_hierarkey
 from pretix.base.shredder import BaseDataShredder
 from pretix.base.signals import (
     logentry_display, register_data_shredders, register_global_settings,
-    register_payment_providers, requiredaction_display,
+    register_payment_providers,
 )
 from pretix.plugins.stripe.forms import StripeKeyValidator
 from pretix.presale.signals import html_head
@@ -72,24 +72,6 @@ def pretixcontrol_logentry_display(sender, logentry, **kwargs):
 
     if text:
         return _('Stripe reported an event: {}').format(text)
-
-
-@receiver(signal=requiredaction_display, dispatch_uid="stripe_requiredaction_display")
-def pretixcontrol_action_display(sender, action, request, **kwargs):
-    if not action.action_type.startswith('pretix.plugins.stripe'):
-        return
-
-    data = json.loads(action.data)
-
-    if action.action_type == 'pretix.plugins.stripe.refund':
-        template = get_template('pretixplugins/stripe/action_refund.html')
-    elif action.action_type == 'pretix.plugins.stripe.overpaid':
-        template = get_template('pretixplugins/stripe/action_overpaid.html')
-    elif action.action_type == 'pretix.plugins.stripe.double':
-        template = get_template('pretixplugins/stripe/action_double.html')
-
-    ctx = {'data': data, 'event': sender, 'action': action}
-    return template.render(ctx, request)
 
 
 settings_hierarkey.add_default('payment_stripe_method_cc', True, bool)

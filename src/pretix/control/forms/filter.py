@@ -7,8 +7,8 @@ from django.utils.timezone import now
 from django.utils.translation import pgettext_lazy, ugettext_lazy as _
 
 from pretix.base.models import (
-    Checkin, Event, Invoice, Item, Order, OrderPosition, Organizer, Question,
-    QuestionAnswer, SubEvent,
+    Checkin, Event, Invoice, Item, Order, OrderPosition, OrderRefund,
+    Organizer, Question, QuestionAnswer, SubEvent,
 )
 from pretix.base.signals import register_payment_providers
 from pretix.control.forms.widgets import Select2
@@ -820,5 +820,45 @@ class VoucherFilterForm(FilterForm):
 
         if fdata.get('ordering'):
             qs = qs.order_by(self.get_order_by())
+
+        return qs
+
+
+class RefundFilterForm(FilterForm):
+    provider = forms.ChoiceField(
+        label=_('Payment provider'),
+        choices=[
+            ('', _('All payment providers')),
+        ],
+        required=False,
+    )
+    status = forms.ChoiceField(
+        label=_('Refund status'),
+        choices=(
+            ('', _('All open refunds')),
+            ('all', _('All refunds')),
+        ) + OrderRefund.REFUND_STATES,
+        required=False,
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.event = kwargs.pop('event')
+        super().__init__(*args, **kwargs)
+        self.fields['provider'].choices += [(k, v.verbose_name) for k, v
+                                            in self.event.get_payment_providers().items()]
+
+    def filter_qs(self, qs):
+        fdata = self.cleaned_data
+        qs = super().filter_qs(qs)
+
+        if fdata.get('provider'):
+            qs = qs.filter(provider=fdata.get('provider'))
+
+        if fdata.get('status'):
+            if fdata.get('status') != 'all':
+                qs = qs.filter(state=fdata.get('status'))
+        else:
+            qs = qs.filter(state__in=[OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT,
+                                      OrderRefund.REFUND_STATE_EXTERNAL])
 
         return qs

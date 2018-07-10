@@ -49,7 +49,7 @@ from pretix.base.signals import register_data_exporters
 from pretix.base.templatetags.money import money_filter
 from pretix.base.views.async import AsyncAction
 from pretix.base.views.mixins import OrderQuestionsViewMixin
-from pretix.control.forms.filter import EventOrderFilterForm
+from pretix.control.forms.filter import EventOrderFilterForm, RefundFilterForm
 from pretix.control.forms.orders import (
     CommentForm, ExporterForm, ExtendForm, MarkPaidForm, OrderContactForm,
     OrderLocaleForm, OrderMailForm, OrderPositionAddForm,
@@ -1343,3 +1343,30 @@ class ExportView(EventPermissionRequiredMixin, ExportMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx['exporters'] = self.exporters
         return ctx
+
+
+class RefundList(EventPermissionRequiredMixin, PaginationMixin, ListView):
+    model = OrderRefund
+    context_object_name = 'refunds'
+    template_name = 'pretixcontrol/orders/refunds.html'
+    permission = 'can_view_orders'
+
+    def get_queryset(self):
+        qs = OrderRefund.objects.filter(
+            order__event=self.request.event
+        ).select_related('order')
+
+        if self.filter_form.is_valid():
+            qs = self.filter_form.filter_qs(qs)
+
+        return qs.distinct()
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['filter_form'] = self.filter_form
+        return ctx
+
+    @cached_property
+    def filter_form(self):
+        return RefundFilterForm(data=self.request.GET, event=self.request.event,
+                                initial={'status': 'open'})

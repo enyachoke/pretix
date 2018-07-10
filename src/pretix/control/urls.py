@@ -214,6 +214,7 @@ urlpatterns = [
         url(r'^orders/overview/$', orders.OverView.as_view(), name='event.orders.overview'),
         url(r'^orders/export/$', orders.ExportView.as_view(), name='event.orders.export'),
         url(r'^orders/export/do$', orders.ExportDoView.as_view(), name='event.orders.export.do'),
+        url(r'^orders/refunds/$', orders.RefundList.as_view(), name='event.orders.refunds'),
         url(r'^orders/go$', orders.OrderGo.as_view(), name='event.orders.go'),
         url(r'^orders/$', orders.OrderList.as_view(), name='event.orders'),
         url(r'^shredder/$', shredder.StartShredView.as_view(), name='event.shredder.start'),

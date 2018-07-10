@@ -772,20 +772,26 @@ class OrderChangeManager:
             # if the order becomes free, mark it paid using the 'free' provider
             # this could happen if positions have been made cheaper or removed (_totaldiff < 0)
             # or positions got split off to a new order (split_order with positive total)
+            p = self.order.payments.create(
+                state=OrderPayment.PAYMENT_STATE_CREATED,
+                provider='free',
+                amount=0,
+                fee=None
+            )
             try:
-                mark_order_paid(
-                    self.order, 'free', send_mail=False, count_waitinglist=False,
-                    user=self.user
-                )
+                p.confirm(send_mail=False, count_waitinglist=False, user=self.user)
             except Quota.QuotaExceededException:
                 raise OrderError(self.error_messages['paid_to_free_exceeded'])
 
         if self.split_order and self.split_order.total == 0:
+            p = self.split_order.payments.create(
+                state=OrderPayment.PAYMENT_STATE_CREATED,
+                provider='free',
+                amount=0,
+                fee=None
+            )
             try:
-                mark_order_paid(
-                    self.split_order, 'free', send_mail=False, count_waitinglist=False,
-                    user=self.user
-                )
+                p.confirm(send_mail=False, count_waitinglist=False, user=self.user)
             except Quota.QuotaExceededException:
                 raise OrderError(self.error_messages['paid_to_free_exceeded'])
 

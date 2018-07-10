@@ -79,6 +79,14 @@
                                             {{ request.event.currency }}
                                         </span>
                             </div>
+                            <label class="radio">
+                                <input type="radio" name="manual_state" value="created" checked>
+                                {% trans "Keep transfer as to do" %}
+                            </label>
+                            <label class="radio">
+                                <input type="radio" name="manual_state" value="done">
+                                {% trans "Mark refund as done" %}
+                            </label>
                         </td>
 
                     </tr>

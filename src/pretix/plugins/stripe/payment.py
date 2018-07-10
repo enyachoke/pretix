@@ -18,7 +18,7 @@ from django.utils.translation import pgettext, ugettext, ugettext_lazy as _
 
 from pretix import __version__
 from pretix.base.decimal import round_decimal
-from pretix.base.models import Event, Order, OrderPayment, OrderRefund, Quota
+from pretix.base.models import Event, OrderPayment, OrderRefund, Quota
 from pretix.base.payment import BasePaymentProvider, PaymentException
 from pretix.base.services.mail import SendMailException
 from pretix.base.settings import SettingsSandbox
@@ -458,10 +458,10 @@ class StripeMethod(BasePaymentProvider):
         else:
             return str(url)
 
-    def shred_payment_info(self, order: Order):
-        if not order.payment_info:
+    def shred_payment_info(self, obj: OrderPayment):
+        if not obj.info:
             return
-        d = json.loads(order.payment_info)
+        d = json.loads(obj.info)
         new = {}
         if 'source' in d:
             new['source'] = {
@@ -478,13 +478,30 @@ class StripeMethod(BasePaymentProvider):
                     'last4': d['source'].get('card', {}).get('last4'),
                 }
             }
+        if 'amount' in d:
             new['amount'] = d['amount']
+        if 'currency' in d:
             new['currency'] = d['currency']
+        if 'status' in d:
             new['status'] = d['status']
+        if 'id' in d:
             new['id'] = d['id']
-            new['_shredded'] = True
-        order.payment_info = json.dumps(new)
-        order.save(update_fields=['payment_info'])
+
+        new['_shredded'] = True
+        obj.info = json.dumps(new)
+        obj.save(update_fields=['info'])
+
+        for le in obj.order.all_logentries().filter(
+                action_type="pretix.plugins.stripe.event"
+        ).exclude(data="", shredded=True):
+            d = le.parsed_data
+            if 'data' in d:
+                for k, v in list(d['data']['object'].items()):
+                    if v not in ('reason', 'status', 'failure_message', 'object', 'id'):
+                        d['data']['object'][k] = '█'
+                le.data = json.dumps(d)
+                le.shredded = True
+                le.save(update_fields=['data', 'shredded'])
 
 
 class StripeCC(StripeMethod):

@@ -152,7 +152,7 @@ class OrderFilterForm(FilterForm):
                 qs = qs.filter(status__in=[Order.STATUS_PENDING, Order.STATUS_PAID])
             elif s == 'ne':
                 qs = qs.filter(status__in=[Order.STATUS_PENDING, Order.STATUS_EXPIRED])
-            else:
+            elif s in ('p', 'n', 'e', 'c', 'r'):
                 qs = qs.filter(status=s)
 
         if fdata.get('ordering'):
@@ -186,6 +186,23 @@ class EventOrderFilterForm(OrderFilterForm):
     )
     answer = forms.CharField(
         required=False
+    )
+    status = forms.ChoiceField(
+        label=_('Order status'),
+        choices=(
+            ('', _('All orders')),
+            ('p', _('Paid')),
+            ('n', _('Pending')),
+            ('o', _('Pending (overdue)')),
+            ('np', _('Pending or paid')),
+            ('e', _('Expired')),
+            ('ne', _('Pending or expired')),
+            ('c', _('Canceled')),
+            ('r', _('Refunded')),
+            ('overpaid', _('Overpaid')),
+            ('underpaid', _('Underpaid')),
+        ),
+        required=False,
     )
 
     def __init__(self, *args, **kwargs):
@@ -246,6 +263,18 @@ class EventOrderFilterForm(OrderFilterForm):
                     answer__iexact=fdata.get('answer')
                 )
                 qs = qs.annotate(has_answer=Exists(answers)).filter(has_answer=True)
+
+        if fdata.get('status') == 'overpaid':
+            qs = qs.filter(
+                Q(~Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_t__lt=0))
+                | Q(Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_rc__lt=0))
+                | Q(Q(status__in=[Order.STATUS_EXPIRED, Order.STATUS_PENDING]) & Q(pending_sum_rc__lte=0))
+            )
+        elif fdata.get('status') == 'underpaid':
+            qs = qs.filter(
+                status=Order.STATUS_PAID,
+                pending_sum_t__gt=0
+            )
 
         return qs
 

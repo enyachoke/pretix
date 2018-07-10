@@ -266,6 +266,12 @@ def event_index(request, organizer, event):
         'comment_form': CommentForm(initial={'comment': request.event.comment})
     }
 
+    ctx['has_overpaid_orders'] = Order.annotate_overpayments(request.event.orders).filter(
+        Q(~Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_t__lt=0))
+        | Q(Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_rc__lt=0))
+        | Q(Q(status__in=[Order.STATUS_EXPIRED, Order.STATUS_PENDING]) & Q(pending_sum_rc__lte=0))
+    ).exists()
+
     for a in ctx['actions']:
         a.display = a.display(request)
 

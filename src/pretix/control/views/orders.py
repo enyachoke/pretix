@@ -74,6 +74,9 @@ class OrderList(EventPermissionRequiredMixin, PaginationMixin, ListView):
         qs = Order.objects.filter(
             event=self.request.event
         ).annotate(pcnt=Count('positions', distinct=True)).select_related('invoice_address')
+
+        qs = Order.annotate_overpayments(qs)
+
         if self.filter_form.is_valid():
             qs = self.filter_form.filter_qs(qs)
 
@@ -257,7 +260,8 @@ class OrderRefundCancel(OrderView):
         return get_object_or_404(self.order.refunds, pk=self.kwargs['refund'])
 
     def post(self, *args, **kwargs):
-        self.refund.done()
+        self.refund.state = OrderRefund.REFUND_STATE_CANCELED
+        self.refund.save()
         # TODO: Log action
         messages.success(self.request, _('The refund has been canceled.'))
         return redirect(self.get_order_url())
@@ -358,7 +362,7 @@ class OrderRefundView(OrderView):
                 p.propose_refund = Decimal('0.00')
                 p.available_amount = p.amount - p.refunded_amount
 
-            unused_payments = set(payments)
+            unused_payments = set(p for p in payments if p.full_refund_possible or p.partial_refund_possible)
 
             # Algorithm to choose which payments are to be refunded to create the least hassle
             if self.start_form.cleaned_data.get('mode') == 'full':
@@ -399,12 +403,14 @@ class OrderRefundView(OrderView):
                 refund_selected = Decimal('0.00')
                 refunds = []
 
-                manual_value = self.request.POST.get('refund-manual')
+                is_valid = True
+                manual_value = self.request.POST.get('refund-manual', '0')
                 manual_value = formats.sanitize_separators(manual_value)
                 try:
                     manual_value = Decimal(manual_value)
                 except (DecimalException, TypeError) as e:
                     messages.error(self.request, _('You entered an invalid number.'))
+                    is_valid = False
                 else:
                     refund_selected += manual_value
                     if manual_value:
@@ -412,26 +418,33 @@ class OrderRefundView(OrderView):
                             order=self.order,
                             payment=None,
                             source=OrderRefund.REFUND_SOURCE_ADMIN,
-                            state=OrderRefund.REFUND_STATE_CREATED,
+                            state=(OrderRefund.REFUND_STATE_DONE
+                                   if self.request.POST.get('manual_state') == 'done'
+                                   else OrderRefund.REFUND_STATE_CREATED),
                             amount=manual_value,
                             provider=p.provider
                         ))
 
                 for p in payments:
-                    value = self.request.POST.get('refund-{}'.format(p.pk))
+                    value = self.request.POST.get('refund-{}'.format(p.pk), '0')
                     value = formats.sanitize_separators(value)
                     try:
                         value = Decimal(value)
                     except (DecimalException, TypeError) as e:
                         messages.error(self.request, _('You entered an invalid number.'))
+                        is_valid = False
                     else:
-                        if value > p.available_amount:
+                        if value == 0:
+                            continue
+                        elif value > p.available_amount:
                             messages.error(self.request, _('You can not refund more than the amount of a '
                                                            'payment that is not yet refunded.'))
+                            is_valid = False
                             break
                         elif value != p.amount and not p.partial_refund_possible:
                             messages.error(self.request, _('You selected a partial refund for a payment method that '
                                                            'only supports full refunds.'))
+                            is_valid = False
                             break
                         elif (p.partial_refund_possible or p.full_refund_possible) and value > 0:
                             refund_selected += value
@@ -444,8 +457,7 @@ class OrderRefundView(OrderView):
                                 provider=p.provider
                             ))
 
-                redirect_back = False
-                if refund_selected == full_refund:
+                if refund_selected == full_refund and is_valid:
                     for r in refunds:
                         r.save()
                         if r.payment:
@@ -459,18 +471,15 @@ class OrderRefundView(OrderView):
                                                                'was: {}').format(str(e)))
                             else:
                                 if r.state == OrderRefund.REFUND_STATE_DONE:
-                                    messages.success(self.request, _('A refund of {} has been processed '
-                                                                     'automatically.').format(
+                                    messages.success(self.request, _('A refund of {} has been processed.').format(
                                         money_filter(r.amount, self.request.event.currency)
                                     ))
-                                    redirect_back = True
                                 elif r.state == OrderRefund.REFUND_STATE_CREATED:
                                     messages.info(self.request, _('A refund of {} has been saved, but not yet '
                                                                   'fully executed. You can mark it as complete '
                                                                   'below.').format(
                                         money_filter(r.amount, self.request.event.currency)
                                     ))
-                                    redirect_back = True
 
                     # TODO: Log actions
                     if self.start_form.cleaned_data.get('action') == 'mark_refunded':
@@ -479,12 +488,12 @@ class OrderRefundView(OrderView):
                         self.order.status = Order.STATUS_PENDING
                         self.order.set_expires(
                             now(),
-                            self.order.event.subevents.filter(id__in=self.order.positions.values_list('subevent_id', flat=True))
+                            self.order.event.subevents.filter(
+                                id__in=self.order.positions.values_list('subevent_id', flat=True))
                         )
                         self.order.save()
 
-                    if redirect_back:
-                        return redirect(self.get_order_url())
+                    return redirect(self.get_order_url())
                 else:
                     messages.error(self.request, _('The refunds you selected do not match the selected total refund '
                                                    'amount.'))
@@ -1147,7 +1156,8 @@ class OrderSendMail(EventPermissionRequiredMixin, OrderViewMixin, FormView):
                     email_context, 'pretix.event.order.email.custom_sent',
                     self.request.user
                 )
-                messages.success(self.request, _('Your message has been queued and will be sent to {}.'.format(order.email)))
+                messages.success(self.request,
+                                 _('Your message has been queued and will be sent to {}.'.format(order.email)))
             except SendMailException:
                 messages.error(
                     self.request,
@@ -1159,8 +1169,8 @@ class OrderSendMail(EventPermissionRequiredMixin, OrderViewMixin, FormView):
         return reverse('control:event.order', kwargs={
             'event': self.request.event.slug,
             'organizer': self.request.event.organizer.slug,
-            'code': self.kwargs['code']}
-        )
+            'code': self.kwargs['code']
+        })
 
     def get_context_data(self, *args, **kwargs):
         ctx = super().get_context_data(*args, **kwargs)
@@ -1257,7 +1267,6 @@ class OrderGo(EventPermissionRequiredMixin, View):
 
 
 class ExportMixin:
-
     @cached_property
     def exporters(self):
         exporters = []

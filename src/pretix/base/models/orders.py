@@ -11,7 +11,10 @@ import dateutil
 import pytz
 from django.conf import settings
 from django.db import models
-from django.db.models import F, Max, Sum
+from django.db.models import (
+    Case, Exists, F, Max, OuterRef, Q, Subquery, Sum, Value, When,
+)
+from django.db.models.functions import Coalesce
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.urls import reverse
@@ -215,6 +218,54 @@ class Order(LoggedModel):
                        OrderRefund.REFUND_STATE_CREATED)
         ).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         return total - payment_sum + refund_sum
+
+    @classmethod
+    def annotate_overpayments(cls, qs):
+        payment_sum = OrderPayment.objects.filter(
+            state__in=(OrderPayment.PAYMENT_STATE_CONFIRMED, OrderPayment.PAYMENT_STATE_REFUNDED),
+            order=OuterRef('pk')
+        ).order_by().values('order').annotate(s=Sum('amount')).values('s')
+        refund_sum = OrderRefund.objects.filter(
+            state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_TRANSIT,
+                       OrderRefund.REFUND_STATE_CREATED),
+            order=OuterRef('pk')
+        ).order_by().values('order').annotate(s=Sum('amount')).values('s')
+        external_refund = OrderRefund.objects.filter(
+            state=OrderRefund.REFUND_STATE_EXTERNAL,
+            order=OuterRef('pk')
+        )
+        pending_refund = OrderRefund.objects.filter(
+            state__in=(OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT),
+            order=OuterRef('pk')
+        )
+
+        qs = qs.annotate(
+            payment_sum=Subquery(payment_sum, output_field=models.DecimalField(decimal_places=2, max_digits=10)),
+            refund_sum=Subquery(refund_sum, output_field=models.DecimalField(decimal_places=2, max_digits=10)),
+            has_external_refund=Exists(external_refund),
+            has_pending_refund=Exists(pending_refund),
+        ).annotate(
+            pending_sum_t=F('total') - Coalesce(F('payment_sum'), 0) + Coalesce(F('refund_sum'), 0),
+            pending_sum_rc=F('payment_sum') + Coalesce(F('refund_sum'), 0),
+        ).annotate(
+            is_overpaid=Case(
+                When(~Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_t__lt=0),
+                     then=Value('1')),
+                When(Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_rc__lt=0),
+                     then=Value('1')),
+                When(Q(status__in=[Order.STATUS_EXPIRED, Order.STATUS_PENDING]) & Q(pending_sum_rc__lte=0),
+                     then=Value('1')),
+                default=Value('0'),
+                output_field=models.IntegerField()
+            ),
+            is_underpaid=Case(
+                When(Q(status=Order.STATUS_PAID) & Q(pending_sum_t__gt=0),
+                     then=Value('1')),
+                default=Value('0'),
+                output_field=models.IntegerField()
+            )
+        )
+        return qs
 
     @property
     def full_code(self):

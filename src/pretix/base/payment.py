@@ -578,18 +578,18 @@ class BasePaymentProvider:
         """
         raise PaymentException(_('Automatic refunds are not supported by this payment provider.'))
 
-    def shred_payment_info(self, order: Order):
+    def shred_payment_info(self, obj: Union[OrderPayment, OrderRefund]):
         """
         When personal data is removed from an event, this method is called to scrub payment-related data
-        from an order. By default, it removes all info from the ``payment_info`` attribute. You can override
+        from a payment or refund. By default, it removes all info from the ``info`` attribute. You can override
         this behavior if you want to retain attributes that are not personal data on their own, i.e. a
         reference to a transaction in an external system. You can also override this to scrub more data, e.g.
         data from external sources that is saved in LogEntry objects or other places.
 
         :param order: An order
         """
-        order.payment_info = None
-        order.save(update_fields=['payment_info'])
+        obj.info = '{}'
+        obj.save(update_fields=['info'])
 
 
 class PaymentException(Exception):

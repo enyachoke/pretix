@@ -206,6 +206,8 @@ urlpatterns = [
             name='event.order.refunds.start'),
         url(r'^orders/(?P<code>[0-9A-Z]+)/refunds/(?P<refund>\d+)/cancel$', orders.OrderRefundCancel.as_view(),
             name='event.order.refunds.cancel'),
+        url(r'^orders/(?P<code>[0-9A-Z]+)/refunds/(?P<refund>\d+)/process$', orders.OrderRefundProcess.as_view(),
+            name='event.order.refunds.process'),
         url(r'^orders/(?P<code>[0-9A-Z]+)/refunds/(?P<refund>\d+)/done$', orders.OrderRefundDone.as_view(),
             name='event.order.refunds.done'),
         url(r'^orders/(?P<code>[0-9A-Z]+)/$', orders.OrderDetail.as_view(), name='event.order'),

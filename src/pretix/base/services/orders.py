@@ -968,7 +968,7 @@ class OrderChangeManager:
             state__in=(OrderPayment.PAYMENT_STATE_CONFIRMED, OrderPayment.PAYMENT_STATE_REFUNDED)
         ).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         refund_sum = self.order.refunds.filter(
-            state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_APPROVED, OrderRefund.REFUND_STATE_DONE)
+            state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_TRANSIT, OrderRefund.REFUND_STATE_DONE)
         ).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         return payment_sum - refund_sum
 

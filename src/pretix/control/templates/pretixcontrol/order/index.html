@@ -451,10 +451,12 @@
                                             <th>#</th>
                                             <th>{% trans "Start date" %}</th>
                                             <th>{% trans "Completion date" %}</th>
+                                            <th>{% trans "Source" %}</th>
                                             <th>{% trans "Payment method" %}</th>
                                             <th>{% trans "Payment" %}</th>
                                             <th>{% trans "Status" %}</th>
                                             <th class="text-right">{% trans "Amount" %}</th>
+                                            <th class="text-right"></th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -463,20 +465,9 @@
                                                 <td>{{ r.full_id }}</td>
                                                 <td>{{ r.created|date:"SHORT_DATETIME_FORMAT" }}</td>
                                                 <td>{{ r.execution_date|date:"SHORT_DATETIME_FORMAT" }}</td>
+                                                <td>{{ r.get_source_display }}</td>
                                                 <td>
                                                     {{ r.payment_provider.verbose_name }}
-                                                    {% if r.state == "transit" or r.state == "created" %}
-                                                        <a href="{% url "control:event.order.refunds.cancel" event=request.event.slug organizer=request.event.organizer.slug code=order.code refund=r.pk %}"
-                                                                class="btn btn-danger btn-xs" data-toggle="tooltip"
-                                                                title="{% trans "Cancel transfer" %}">
-                                                            <span class="fa fa-times"></span>
-                                                        </a>
-                                                        <a href="{% url "control:event.order.refunds.done" event=request.event.slug organizer=request.event.organizer.slug code=order.code refund=r.pk %}"
-                                                                class="btn btn-primary btn-xs" data-toggle="tooltip"
-                                                                title="{% trans "Confirm as done" %}">
-                                                            <span class="fa fa-check"></span>
-                                                        </a>
-                                                    {% endif %}
                                                 </td>
                                                 <td>
                                                     {% if r.payment %}
@@ -489,6 +480,32 @@
                                                 </span>
                                                 </td>
                                                 <td class="text-right">{{ r.amount|money:request.event.currency }}</td>
+                                                <td class="text-right">
+                                                    {% if r.state == "transit" or r.state == "created" %}
+                                                        <a href="{% url "control:event.order.refunds.cancel" event=request.event.slug organizer=request.event.organizer.slug code=order.code refund=r.pk %}"
+                                                                class="btn btn-danger btn-xs" data-toggle="tooltip"
+                                                                title="{% trans "Cancel transfer" %}">
+                                                            <span class="fa fa-times"></span>
+                                                        </a>
+                                                        <a href="{% url "control:event.order.refunds.retry" event=request.event.slug organizer=request.event.organizer.slug code=order.code refund=r.pk %}"
+                                                                class="btn btn-primary btn-xs" data-toggle="tooltip"
+                                                                title="{% trans "Confirm as done" %}">
+                                                            <span class="fa fa-check"></span>
+                                                        </a>
+                                                    {% elif r.state == "external" %}
+                                                        <a href="{% url "control:event.order.refunds.cancel" event=request.event.slug organizer=request.event.organizer.slug code=r.order.code refund=r.pk %}?next={{ request.get_full_path|urlencode }}"
+                                                                class="btn btn-default btn-xs" data-toggle="tooltip">
+                                                            <span class="fa fa-times"></span>
+                                                            {% trans "Ignore" %}
+                                                        </a>
+                                                        <a href="{% url "control:event.order.refunds.process" event=request.event.slug organizer=request.event.organizer.slug code=r.order.code refund=r.pk %}?next={{ request.get_full_path|urlencode }}"
+                                                                class="btn btn-primary btn-xs"
+                                                                data-toggle="tooltip">
+                                                            <span class="fa fa-check"></span>
+                                                            {% trans "Process refund" %}
+                                                        </a>
+                                                    {% endif %}
+                                                </td>
                                             </tr>
                                         {% endfor %}
                                         </tbody>

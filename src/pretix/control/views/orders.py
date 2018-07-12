@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import formats
 from django.utils.formats import date_format
 from django.utils.functional import cached_property
+from django.utils.http import is_safe_url
 from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 from django.views.generic import (
@@ -264,11 +265,49 @@ class OrderRefundCancel(OrderView):
         self.refund.save()
         # TODO: Log action
         messages.success(self.request, _('The refund has been canceled.'))
+        if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
+            return redirect(self.request.GET.get("next"))
         return redirect(self.get_order_url())
 
     def get(self, *args, **kwargs):
         return render(self.request, 'pretixcontrol/order/refund_cancel.html', {
             'order': self.order,
+        })
+
+
+class OrderRefundProcess(OrderView):
+    permission = 'can_change_orders'
+
+    @cached_property
+    def refund(self):
+        return get_object_or_404(self.order.refunds, pk=self.kwargs['refund'])
+
+    def post(self, *args, **kwargs):
+        self.refund.done()
+        # TODO: Log action
+
+        if self.request.POST.get("action") == "r":
+            mark_order_refunded(self.order, user=self.request.user)
+        else:
+            self.order.status = Order.STATUS_PENDING
+            self.order.set_expires(
+                now(),
+                self.order.event.subevents.filter(
+                    id__in=self.order.positions.values_list('subevent_id', flat=True))
+            )
+            self.order.save()
+
+        messages.success(self.request, _('The refund has been processed.'))
+        if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
+            return redirect(self.request.GET.get("next"))
+        return redirect(self.get_order_url())
+
+    def get(self, *args, **kwargs):
+        return render(self.request, 'pretixcontrol/order/refund_process.html', {
+            'order': self.order,
+            'refund': self.refund,
+            'pending_sum': self.order.pending_sum + self.refund.amount,
+            'propose_cancel': self.order.pending_sum + self.refund.amount >= self.order.total
         })
 
 
@@ -283,6 +322,8 @@ class OrderRefundDone(OrderView):
         self.refund.done()
         # TODO: Log action
         messages.success(self.request, _('The refund has been marked as done.'))
+        if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
+            return redirect(self.request.GET.get("next"))
         return redirect(self.get_order_url())
 
     def get(self, *args, **kwargs):
@@ -502,6 +543,7 @@ class OrderRefundView(OrderView):
                 'payments': payments,
                 'remainder': to_refund,
                 'order': self.order,
+                'partial_amount': self.request.POST.get('start-partial_amount'),
                 'start_form': self.start_form
             })
         return self.get(*args, **kwargs)

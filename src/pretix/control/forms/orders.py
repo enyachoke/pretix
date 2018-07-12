@@ -374,6 +374,7 @@ class OrderRefundForm(forms.Form):
     def __init__(self, *args, **kwargs):
         self.order = kwargs.pop('order')
         super().__init__(*args, **kwargs)
+        change_decimal_field(self.fields['partial_amount'], self.order.event.currency)
 
     def clean_partial_amount(self):
         max_amount = self.order.total - self.order.pending_sum

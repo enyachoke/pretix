@@ -17,7 +17,7 @@ from django.utils.timezone import now
 from django.utils.translation import pgettext, ugettext_lazy as _, ungettext
 
 from pretix.base.models import (
-    Item, Order, OrderPosition, RequiredAction, SubEvent, Voucher,
+    Item, Order, OrderPosition, OrderRefund, RequiredAction, SubEvent, Voucher,
     WaitingListEntry,
 )
 from pretix.base.models.checkin import CheckinList
@@ -271,6 +271,10 @@ def event_index(request, organizer, event):
         | Q(Q(status__in=[Order.STATUS_REFUNDED, Order.STATUS_CANCELED]) & Q(pending_sum_rc__lt=0))
         | Q(Q(status__in=[Order.STATUS_EXPIRED, Order.STATUS_PENDING]) & Q(pending_sum_rc__lte=0))
     ).exists()
+    ctx['has_pending_refunds'] = OrderRefund.objects.filter(
+        order__event=request.event,
+        state__in=(OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_EXTERNAL)
+    )
 
     for a in ctx['actions']:
         a.display = a.display(request)

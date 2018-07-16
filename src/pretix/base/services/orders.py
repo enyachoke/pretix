@@ -951,6 +951,22 @@ class OrderChangeManager:
 
         split_order.save()
 
+        if split_order.status == Order.STATUS_PAID:
+            split_order.payments.create(
+                state=OrderPayment.PAYMENT_STATE_CONFIRMED,
+                amount=split_order.total,
+                payment_date=now(),
+                provider='offsetting',
+                info=json.dumps({'orders': [self.order.code]})
+            )
+            self.order.payments.create(
+                state=OrderPayment.PAYMENT_STATE_CONFIRMED,
+                amount=-1 * split_order.total,
+                payment_date=now(),
+                provider='offsetting',
+                info=json.dumps({'orders': [split_order.code]})
+            )
+
         if split_order.total != Decimal('0.00') and self.order.invoices.filter(is_cancellation=False).last():
             generate_invoice(split_order)
         return split_order

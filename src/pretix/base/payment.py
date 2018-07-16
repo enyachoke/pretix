@@ -6,7 +6,6 @@ from typing import Any, Dict, Union
 import pytz
 from django import forms
 from django.conf import settings
-from django.contrib import messages
 from django.core.exceptions import ImproperlyConfigured
 from django.dispatch import receiver
 from django.forms import Form
@@ -648,15 +647,6 @@ class BoxOfficeProvider(BasePaymentProvider):
     def settings_form_fields(self) -> dict:
         return {}
 
-    def order_control_refund_render(self, order: Order) -> str:
-        return ''
-
-    def order_control_refund_perform(self, request: HttpRequest, order: Order) -> Union[bool, str]:
-        from pretix.base.services.orders import mark_order_refunded
-
-        mark_order_refunded(order, user=request.user)
-        messages.success(request, _('The order has been marked as refunded.'))
-
     def is_allowed(self, request: HttpRequest, total: Decimal=None) -> bool:
         return False
 
@@ -664,6 +654,32 @@ class BoxOfficeProvider(BasePaymentProvider):
         return False
 
 
+class OffsettingProvider(BasePaymentProvider):
+    is_implicit = True
+    is_enabled = True
+    identifier = "offsetting"
+    verbose_name = _("Offsetting")
+
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment):
+        try:
+            payment.confirm()
+        except Quota.QuotaExceededException as e:
+            raise PaymentException(str(e))
+
+    @property
+    def settings_form_fields(self) -> dict:
+        return {}
+
+    def is_allowed(self, request: HttpRequest, total: Decimal=None) -> bool:
+        return False
+
+    def order_change_allowed(self, order: Order) -> bool:
+        return False
+
+    def payment_control_render(self, request: HttpRequest, payment: OrderPayment) -> str:
+        return _('Balanced against orders: %s' % ', '.join(payment.info_data['orders']))
+
+
 @receiver(register_payment_providers, dispatch_uid="payment_free")
 def register_payment_provider(sender, **kwargs):
-    return [FreeOrderProvider, BoxOfficeProvider]
+    return [FreeOrderProvider, BoxOfficeProvider, OffsettingProvider]

@@ -7,7 +7,7 @@ from django.test import RequestFactory
 from django.utils.timezone import now
 from stripe import APIConnectionError, CardError, StripeError
 
-from pretix.base.models import Event, Order, Organizer
+from pretix.base.models import Event, Order, OrderRefund, Organizer
 from pretix.base.payment import PaymentException
 from pretix.plugins.stripe.payment import StripeCC
 
@@ -72,7 +72,10 @@ def test_perform_success(env, factory, monkeypatch):
     req.session = {}
     prov.checkout_prepare(req, {})
     assert 'payment_stripe_token' in req.session
-    prov.payment_perform(req, order)
+    payment = order.payments.create(
+        provider='stripe_cc', amount=order.total
+    )
+    prov.execute_payment(req, payment)
     order.refresh_from_db()
     assert order.status == Order.STATUS_PAID
 
@@ -102,7 +105,10 @@ def test_perform_success_zero_decimal_currency(env, factory, monkeypatch):
     req.session = {}
     prov.checkout_prepare(req, {})
     assert 'payment_stripe_token' in req.session
-    prov.payment_perform(req, order)
+    payment = order.payments.create(
+        provider='stripe_cc', amount=order.total
+    )
+    prov.execute_payment(req, payment)
     order.refresh_from_db()
     assert order.status == Order.STATUS_PAID
 
@@ -125,7 +131,10 @@ def test_perform_card_error(env, factory, monkeypatch):
     prov.checkout_prepare(req, {})
     assert 'payment_stripe_token' in req.session
     with pytest.raises(PaymentException):
-        prov.payment_perform(req, order)
+        payment = order.payments.create(
+            provider='stripe_cc', amount=order.total
+        )
+        prov.execute_payment(req, payment)
     order.refresh_from_db()
     assert order.status == Order.STATUS_PENDING
 
@@ -148,7 +157,10 @@ def test_perform_stripe_error(env, factory, monkeypatch):
     prov.checkout_prepare(req, {})
     assert 'payment_stripe_token' in req.session
     with pytest.raises(PaymentException):
-        prov.payment_perform(req, order)
+        payment = order.payments.create(
+            provider='stripe_cc', amount=order.total
+        )
+        prov.execute_payment(req, payment)
     order.refresh_from_db()
     assert order.status == Order.STATUS_PENDING
 
@@ -175,7 +187,10 @@ def test_perform_failed(env, factory, monkeypatch):
     prov.checkout_prepare(req, {})
     assert 'payment_stripe_token' in req.session
     with pytest.raises(PaymentException):
-        prov.payment_perform(req, order)
+        payment = order.payments.create(
+            provider='stripe_cc', amount=order.total
+        )
+        prov.execute_payment(req, payment)
     order.refresh_from_db()
     assert order.status == Order.STATUS_PENDING
 
@@ -195,16 +210,19 @@ def test_refund_success(env, factory, monkeypatch):
 
     monkeypatch.setattr("stripe.Charge.retrieve", charge_retr)
     order.status = Order.STATUS_PAID
-    order.payment_info = json.dumps({
+    p = order.payments.create(provider='stripe_cc', amount=order.total, info=json.dumps({
         'id': 'ch_123345345'
-    })
+    }))
     order.save()
     prov = StripeCC(event)
     req = factory.post('/', data={'auto_refund': 'auto'})
     req.user = None
-    prov.order_control_refund_perform(req, order)
-    order.refresh_from_db()
-    assert order.status == Order.STATUS_REFUNDED
+    refund = order.refunds.create(
+        provider='stripe_cc', amount=order.total, payment=p,
+    )
+    prov.execute_refund(refund)
+    refund.refresh_from_db()
+    assert refund.state == OrderRefund.REFUND_STATE_DONE
 
 
 @pytest.mark.django_db
@@ -222,13 +240,16 @@ def test_refund_unavailable(env, factory, monkeypatch):
 
     monkeypatch.setattr("stripe.Charge.retrieve", charge_retr)
     order.status = Order.STATUS_PAID
-    order.payment_info = json.dumps({
+    p = order.payments.create(provider='stripe_cc', amount=order.total, info=json.dumps({
         'id': 'ch_123345345'
-    })
+    }))
     order.save()
     prov = StripeCC(event)
     req = factory.get('/')
     req.user = None
-    prov.order_control_refund_perform(req, order)
-    order.refresh_from_db()
-    assert order.status == Order.STATUS_PAID
+    refund = order.refunds.create(
+        provider='stripe_cc', amount=order.total, payment=p
+    )
+    prov.execute_refund(refund)
+    refund.refresh_from_db()
+    assert refund.state != OrderRefund.REFUND_STATE_DONE

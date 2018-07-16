@@ -61,7 +61,7 @@ def _handle_transaction(trans: BankTransaction, code: str, event: Event=None, or
         amount=trans.amount,
         provider='banktransfer',
         state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
-        default={
+        defaults={
             'state': OrderPayment.PAYMENT_STATE_CREATED,
         }
     )

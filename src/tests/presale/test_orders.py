@@ -417,7 +417,7 @@ class OrdersTest(TestCase):
             }
         )
         self.order.refresh_from_db()
-        assert self.order.payment_provider == 'testdummy'
+        assert self.order.payments.last().provider == 'testdummy'
         fee = self.order.fees.get(fee_type=OrderFee.FEE_TYPE_PAYMENT)
         assert fee.value == Decimal('12.00')
         assert self.order.total == Decimal('23.00') + fee.value

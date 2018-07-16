@@ -212,7 +212,7 @@ def test_order_transition_to_paid_expired_quota_left(client, env):
 
     (Order.STATUS_PAID, Order.STATUS_PENDING, True),
     (Order.STATUS_PAID, Order.STATUS_CANCELED, False),
-    (Order.STATUS_PAID, Order.STATUS_REFUNDED, True),
+    (Order.STATUS_PAID, Order.STATUS_REFUNDED, False),
     (Order.STATUS_PAID, Order.STATUS_EXPIRED, False),
 
     (Order.STATUS_PENDING, Order.STATUS_CANCELED, True),

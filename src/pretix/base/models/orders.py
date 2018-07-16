@@ -981,7 +981,7 @@ class OrderPayment(models.Model):
         super().save(*args, **kwargs)
 
     def create_external_refund(self, amount=None, execution_date=None, info='{}'):
-        return self.order.refunds.create(
+        r = self.order.refunds.create(
             state=OrderRefund.REFUND_STATE_EXTERNAL,
             source=OrderRefund.REFUND_SOURCE_EXTERNAL,
             amount=amount if amount is not None else self.amount,
@@ -991,6 +991,11 @@ class OrderPayment(models.Model):
             provider=self.provider,
             info=info
         )
+        self.order.log_action('pretix.event.order.refund.created.externally', {
+            'local_id': r.local_id,
+            'provider': r.provider,
+        })
+        return r
 
 
 class OrderRefund(models.Model):
@@ -1108,7 +1113,7 @@ class OrderRefund(models.Model):
         self.execution_date = self.execution_date or now()
         self.save()
 
-        self.order.log_action('pretix.event.order.refunds.done', {
+        self.order.log_action('pretix.event.order.refund.done', {
             'local_id': self.local_id,
             'provider': self.provider,
         }, user=user, auth=auth)

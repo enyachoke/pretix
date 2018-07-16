@@ -292,10 +292,6 @@ class OrderRefundProcess(OrderView):
 
     def post(self, *args, **kwargs):
         self.refund.done()
-        self.order.log_action('pretix.event.order.refund.done', {
-            'local_id': self.payment.local_id,
-            'provider': self.payment.provider,
-        }, user=self.request.user)
 
         if self.request.POST.get("action") == "r":
             mark_order_refunded(self.order, user=self.request.user)
@@ -331,10 +327,6 @@ class OrderRefundDone(OrderView):
 
     def post(self, *args, **kwargs):
         self.refund.done()
-        self.order.log_action('pretix.event.order.refund.done', {
-            'local_id': self.payment.local_id,
-            'provider': self.payment.provider,
-        }, user=self.request.user)
         messages.success(self.request, _('The refund has been marked as done.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))

@@ -22,9 +22,7 @@ from pretix.base.models import (
 from pretix.base.models.event import SubEvent
 from pretix.base.models.items import SubEventItem, SubEventItemVariation
 from pretix.base.reldate import RelativeDate, RelativeDateWrapper
-from pretix.base.services.orders import (
-    OrderError, cancel_order, mark_order_paid, perform_order,
-)
+from pretix.base.services.orders import OrderError, cancel_order, perform_order
 
 
 class UserTestCase(TestCase):
@@ -600,7 +598,9 @@ class OrderTestCase(BaseQuotaTestCase):
     def test_paid_in_time(self):
         self.quota.size = 0
         self.quota.save()
-        mark_order_paid(self.order)
+        self.order.payments.create(
+            provider='manual', amount=self.order.total
+        ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_PAID)
 
@@ -609,7 +609,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.status = Order.STATUS_EXPIRED
         self.order.expires = now() - timedelta(days=2)
         self.order.save()
-        mark_order_paid(self.order)
+        self.order.payments.create(
+            provider='manual', amount=self.order.total
+        ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_PAID)
 
@@ -619,7 +621,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.expires = now() - timedelta(days=2)
         self.order.save()
         with self.assertRaises(Quota.QuotaExceededException):
-            mark_order_paid(self.order)
+            self.order.payments.create(
+                provider='manual', amount=self.order.total
+            ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_EXPIRED)
 
@@ -640,7 +644,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.expires = now() - timedelta(days=2)
         self.order.save()
         with self.assertRaises(Quota.QuotaExceededException):
-            mark_order_paid(self.order)
+            self.order.payments.create(
+                provider='manual', amount=self.order.total
+            ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_EXPIRED)
         self.event.has_subevents = False
@@ -652,7 +658,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.expires = now() - timedelta(days=2)
         self.order.save()
         with self.assertRaises(Quota.QuotaExceededException):
-            mark_order_paid(self.order)
+            self.order.payments.create(
+                provider='manual', amount=self.order.total
+            ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_EXPIRED)
 
@@ -664,7 +672,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.quota.size = 0
         self.quota.save()
         with self.assertRaises(Quota.QuotaExceededException):
-            mark_order_paid(self.order)
+            self.order.payments.create(
+                provider='manual', amount=self.order.total
+            ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertIn(self.order.status, (Order.STATUS_PENDING, Order.STATUS_EXPIRED))
 
@@ -672,7 +682,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.event.settings.payment_term_accept_late = True
         self.order.expires = now() - timedelta(days=2)
         self.order.save()
-        mark_order_paid(self.order)
+        self.order.payments.create(
+            provider='manual', amount=self.order.total
+        ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_PAID)
 
@@ -683,7 +695,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.save()
         self.quota.size = 0
         self.quota.save()
-        mark_order_paid(self.order, force=True)
+        self.order.payments.create(
+            provider='manual', amount=self.order.total
+        ).confirm(force=True)
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_PAID)
 
@@ -696,7 +710,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.quota.size = 2
         self.quota.save()
         with self.assertRaises(Quota.QuotaExceededException):
-            mark_order_paid(self.order)
+            self.order.payments.create(
+                provider='manual', amount=self.order.total
+            ).confirm()
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_EXPIRED)
 
@@ -707,7 +723,9 @@ class OrderTestCase(BaseQuotaTestCase):
         self.order.save()
         self.quota.size = 2
         self.quota.save()
-        mark_order_paid(self.order, count_waitinglist=False)
+        self.order.payments.create(
+            provider='manual', amount=self.order.total
+        ).confirm(count_waitinglist=False)
         self.order = Order.objects.get(id=self.order.id)
         self.assertEqual(self.order.status, Order.STATUS_PAID)
 

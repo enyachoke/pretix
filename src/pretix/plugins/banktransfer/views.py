@@ -11,12 +11,11 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.functional import cached_property
 from django.utils.timezone import now
-from django.utils.translation import ugettext as _
+from django.utils.translation import ugettext as _, ugettext_noop
 from django.views.generic import DetailView, ListView, View
 
-from pretix.base.models import Order, Quota
+from pretix.base.models import Order, OrderPayment, Quota
 from pretix.base.services.mail import SendMailException
-from pretix.base.services.orders import mark_order_paid
 from pretix.base.settings import SettingsSandbox
 from pretix.base.templatetags.money import money_filter
 from pretix.control.permissions import (
@@ -66,31 +65,35 @@ class ActionView(View):
                 'message': _('The order has already been canceled.')
             })
 
+        p = trans.order.payments.get_or_create(
+            amount=trans.amount,
+            provider='banktransfer',
+            state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
+            defaults={
+                'state': OrderPayment.PAYMENT_STATE_CREATED,
+            }
+        )[0]
+        p.info_data = {
+            'reference': trans.reference,
+            'date': trans.date,
+            'payer': trans.payer,
+            'trans_id': trans.pk
+        }
         try:
-            mark_order_paid(trans.order, provider='banktransfer', info=json.dumps({
-                'reference': trans.reference,
-                'date': trans.date,
-                'payer': trans.payer,
-                'trans_id': trans.pk
-            }), count_waitinglist=False)
-            trans.state = BankTransaction.STATE_VALID
-            trans.save()
+            p.confirm(user=self.request.user)
         except Quota.QuotaExceededException as e:
-            return JsonResponse({
-                'status': 'error',
-                'message': str(e)
-            })
+            trans.state = BankTransaction.STATE_ERROR
+            trans.message = str(e)
         except SendMailException:
-            return JsonResponse({
-                'status': 'error',
-                'message': _('Problem sending email.')
-            })
+            trans.state = BankTransaction.STATE_ERROR
+            trans.message = ugettext_noop('Problem sending email.')
         else:
             trans.state = BankTransaction.STATE_VALID
-            trans.save()
-            return JsonResponse({
-                'status': 'ok'
-            })
+            trans.order.payments.filter(
+                provider='banktransfer',
+                state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
+            ).update(state=OrderPayment.PAYMENT_STATE_CANCELED)
+        trans.save()
 
     def _assign(self, trans, code):
         try:

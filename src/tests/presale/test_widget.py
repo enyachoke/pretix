@@ -57,8 +57,8 @@ class WidgetCartTest(CartTestMixin, TestCase):
         response = self.client.get('/%s/%s/order/%s/%s/modify' % (self.orga.slug, self.event.slug, self.order.code,
                                                                   self.order.secret))
         assert 'X-Frame-Options' not in response
-        response = self.client.get('/%s/%s/order/%s/%s/pay' % (self.orga.slug, self.event.slug, self.order.code,
-                                                               self.order.secret))
+        response = self.client.get('/%s/%s/order/%s/%s/pay/change' % (self.orga.slug, self.event.slug, self.order.code,
+                                                                      self.order.secret))
         assert 'X-Frame-Options' not in response
         response = self.client.get('/%s/%s/order/%s/%s/cancel' % (self.orga.slug, self.event.slug, self.order.code,
                                                                   self.order.secret))

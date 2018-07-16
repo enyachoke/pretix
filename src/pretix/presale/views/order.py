@@ -433,13 +433,15 @@ class OrderPayChangeMethod(EventViewMixin, OrderDetailMixin, TemplateView):
                                 'new_fee': new_fee,
                                 'old_provider': self.open_payment.provider,
                                 'new_provider': p['provider'].identifier,
-                                'payment': newpayment.pk
+                                'payment': newpayment.pk,
+                                'local_id': newpayment.local_id,
                             })
                         else:
                             self.order.log_action('pretix.event.order.payment.started', {
                                 'fee': new_fee,
                                 'provider': p['provider'].identifier,
-                                'payment': newpayment.pk
+                                'payment': newpayment.pk,
+                                'local_id': newpayment.local_id,
                             })
                         self.order.save()
 

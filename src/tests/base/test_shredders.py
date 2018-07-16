@@ -308,7 +308,7 @@ def test_payment_info_shredder(event, order):
     s.shred_data()
 
     order.refresh_from_db()
-    assert json.loads(order.payment_info) == {
+    assert order.payments.first().info_data == {
         '_shredded': True,
         'reference': '█',
         'date': '2018-05-01',

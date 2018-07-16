@@ -19,7 +19,7 @@ from pretix.base.reldate import RelativeDate, RelativeDateWrapper
 from pretix.base.services.invoices import generate_invoice
 from pretix.base.services.orders import (
     OrderChangeManager, OrderError, _create_order, expire_orders,
-    mark_order_paid, send_download_reminders,
+    send_download_reminders,
 )
 
 
@@ -178,7 +178,9 @@ def test_expiring_paid_invoice(event):
     o2 = Order.objects.get(id=o2.id)
     assert o2.status == Order.STATUS_EXPIRED
     assert o2.invoices.count() == 2
-    mark_order_paid(o2)
+    o2.payments.create(
+        provider='manual', amount=o2.total
+    ).confirm()
     assert o2.invoices.count() == 3
     assert o2.invoices.last().is_cancellation is False
 
@@ -593,10 +595,9 @@ class OrderChangeManagerTests(TestCase):
         self.order.status = Order.STATUS_PAID
         self.order.save()
         self.ocm.change_item(self.op1, self.shirt, None)
-        with self.assertRaises(OrderError):
-            self.ocm.commit()
+        self.ocm.commit()
         self.op1.refresh_from_db()
-        assert self.op1.item == self.ticket
+        assert self.op1.item == self.shirt
 
     def test_change_price_to_free_marked_as_paid(self):
         self.ocm.change_price(self.op1, Decimal('0.00'))
@@ -605,7 +606,7 @@ class OrderChangeManagerTests(TestCase):
         self.order.refresh_from_db()
         assert self.order.total == 0
         assert self.order.status == Order.STATUS_PAID
-        assert self.order.payment_provider == 'free'
+        assert self.order.payments.last().provider == 'free'
 
     def test_change_paid_same_price(self):
         self.order.status = Order.STATUS_PAID
@@ -620,10 +621,9 @@ class OrderChangeManagerTests(TestCase):
         self.order.status = Order.STATUS_PAID
         self.order.save()
         self.ocm.change_price(self.op1, Decimal('5.00'))
-        with self.assertRaises(OrderError):
-            self.ocm.commit()
+        self.ocm.commit()
         self.order.refresh_from_db()
-        assert self.order.total == 46
+        assert self.order.total == 46 - 5
         assert self.order.status == Order.STATUS_PAID
 
     def test_add_item_quota_required(self):

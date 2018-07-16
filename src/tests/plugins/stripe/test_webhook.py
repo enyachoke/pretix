@@ -227,7 +227,11 @@ def test_webhook_global(env, client, monkeypatch):
     charge = get_test_charge(env[1])
     monkeypatch.setattr("stripe.Charge.retrieve", lambda *args, **kwargs: charge)
 
-    ReferencedStripeObject.objects.create(order=order, reference="ch_18TY6GGGWE2Ias8TZHanef25")
+    payment = order.payments.create(
+        provider='stripe_cc', amount=order.total
+    )
+    ReferencedStripeObject.objects.create(order=order, reference="ch_18TY6GGGWE2Ias8TZHanef25",
+                                          payment=payment)
 
     client.post('/_stripe/webhook/', json.dumps(
         {

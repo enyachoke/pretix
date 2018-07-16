@@ -1,3 +1,4 @@
+import json
 import logging
 import mimetypes
 import os
@@ -459,12 +460,43 @@ class OrderRefundView(OrderView):
                             order=self.order,
                             payment=None,
                             source=OrderRefund.REFUND_SOURCE_ADMIN,
-                            state=(OrderRefund.REFUND_STATE_DONE
-                                   if self.request.POST.get('manual_state') == 'done'
-                                   else OrderRefund.REFUND_STATE_CREATED),
+                            state=(
+                                OrderRefund.REFUND_STATE_DONE
+                                if self.request.POST.get('manual_state') == 'done'
+                                else OrderRefund.REFUND_STATE_CREATED
+                            ),
                             amount=manual_value,
-                            provider=p.provider
+                            provider='manual'
                         ))
+
+                offsetting_value = self.request.POST.get('refund-offsetting', '0')
+                offsetting_value = formats.sanitize_separators(offsetting_value)
+                try:
+                    offsetting_value = Decimal(offsetting_value)
+                except (DecimalException, TypeError) as e:
+                    messages.error(self.request, _('You entered an invalid number.'))
+                    is_valid = False
+                else:
+                    if offsetting_value:
+                        refund_selected += offsetting_value
+                        try:
+                            order = Order.objects.get(code=self.request.POST.get('order-offsetting'))
+                        except Order.DoesNotExist:
+                            messages.error(self.request, _('You entered an order that could not be found.'))
+                            is_valid = False
+                        else:
+                            refunds.append(OrderRefund(
+                                order=self.order,
+                                payment=None,
+                                source=OrderRefund.REFUND_SOURCE_ADMIN,
+                                state=OrderRefund.REFUND_STATE_DONE,
+                                execution_date=now(),
+                                amount=offsetting_value,
+                                provider='offsetting',
+                                info=json.dumps({
+                                    'orders': [order.code]
+                                })
+                            ))
 
                 for p in payments:
                     value = self.request.POST.get('refund-{}'.format(p.pk), '0')

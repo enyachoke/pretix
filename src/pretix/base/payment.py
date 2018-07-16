@@ -511,10 +511,11 @@ class BasePaymentProvider:
 
         :param order: The order object
         """
-        if self.settings._total_max is not None and order.total > Decimal(self.settings._total_max):
+        ps = order.pending_sum
+        if self.settings._total_max is not None and ps > Decimal(self.settings._total_max):
             return False
 
-        if self.settings._total_min is not None and order.total < Decimal(self.settings._total_min):
+        if self.settings._total_min is not None and ps < Decimal(self.settings._total_min):
             return False
 
         return self._is_still_available(order=order)

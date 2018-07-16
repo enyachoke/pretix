@@ -67,6 +67,26 @@
                     <tr>
                         <td></td>
                         <td></td>
+                        <td><strong>{% trans "Transfer to other order" %}</strong></td>
+                        <td></td>
+                        <td>
+                            {% trans "Transfer" context "amount_label" %}
+                            <div class="input-group">
+                                <input type="text" name="refund-offsetting"
+                                       title="" class="form-control">
+                                <span class="input-group-addon">
+                                            {{ request.event.currency }}
+                                        </span>
+                            </div>
+                            {% trans "to" context "order_label" %}
+                            <input type="text" name="order-offsetting"
+                                   value="" title="" class="form-control">
+                        </td>
+
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td></td>
                         <td><strong>{% trans "Manual refund" %}</strong></td>
                         <td></td>
                         <td>

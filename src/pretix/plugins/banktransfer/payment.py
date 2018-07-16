@@ -2,12 +2,13 @@ import json
 import textwrap
 from collections import OrderedDict
 
+from django.http import HttpRequest
 from django.template.loader import get_template
 from django.utils.translation import ugettext_lazy as _
 from i18nfield.fields import I18nFormField, I18nTextarea
 from i18nfield.strings import LazyI18nString
 
-from pretix.base.models import Order
+from pretix.base.models import OrderPayment
 from pretix.base.payment import BasePaymentProvider
 
 
@@ -71,11 +72,11 @@ class BankTransfer(BasePaymentProvider):
         }
         return template.render(ctx)
 
-    def order_pending_render(self, request, order) -> str:
+    def payment_pending_render(self, request: HttpRequest, payment: OrderPayment):
         template = get_template('pretixplugins/banktransfer/pending.html')
         ctx = {
             'event': self.event,
-            'order': order,
+            'order': payment.order,
             'details': self.settings.get('bank_details', as_type=LazyI18nString),
         }
         return template.render(ctx)
@@ -90,12 +91,12 @@ class BankTransfer(BasePaymentProvider):
                'payment_info': payment_info, 'order': order}
         return template.render(ctx)
 
-    def shred_payment_info(self, order: Order):
-        if not order.payment_info:
+    def shred_payment_info(self, obj):
+        if not obj.info_data:
             return
-        d = json.loads(order.payment_info)
+        d = obj.info_data
         d['reference'] = '█'
         d['payer'] = '█'
         d['_shredded'] = True
-        order.payment_info = json.dumps(d)
-        order.save(update_fields=['payment_info'])
+        obj.info = json.dumps(d)
+        obj.save(update_fields=['info'])

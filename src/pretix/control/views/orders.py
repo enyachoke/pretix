@@ -243,6 +243,10 @@ class OrderPaymentCancel(OrderView):
         if self.payment.state in (OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING):
             self.payment.state = OrderPayment.PAYMENT_STATE_CANCELED
             self.payment.save()
+            self.order.log_action('pretix.event.order.payment.canceled', {
+                'local_id': self.payment.local_id,
+                'provider': self.payment.provider,
+            }, user=self.request.user)
             messages.error(self.request, _('This payment has been canceled.'))
         else:
             messages.error(self.request, _('This payment can not be canceled at the moment.'))
@@ -264,7 +268,10 @@ class OrderRefundCancel(OrderView):
     def post(self, *args, **kwargs):
         self.refund.state = OrderRefund.REFUND_STATE_CANCELED
         self.refund.save()
-        # TODO: Log action
+        self.order.log_action('pretix.event.order.refund.canceled', {
+            'local_id': self.payment.local_id,
+            'provider': self.payment.provider,
+        }, user=self.request.user)
         messages.success(self.request, _('The refund has been canceled.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))
@@ -285,7 +292,10 @@ class OrderRefundProcess(OrderView):
 
     def post(self, *args, **kwargs):
         self.refund.done()
-        # TODO: Log action
+        self.order.log_action('pretix.event.order.refund.done', {
+            'local_id': self.payment.local_id,
+            'provider': self.payment.provider,
+        }, user=self.request.user)
 
         if self.request.POST.get("action") == "r":
             mark_order_refunded(self.order, user=self.request.user)
@@ -321,7 +331,10 @@ class OrderRefundDone(OrderView):
 
     def post(self, *args, **kwargs):
         self.refund.done()
-        # TODO: Log action
+        self.order.log_action('pretix.event.order.refund.done', {
+            'local_id': self.payment.local_id,
+            'provider': self.payment.provider,
+        }, user=self.request.user)
         messages.success(self.request, _('The refund has been marked as done.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))
@@ -554,7 +567,10 @@ class OrderRefundView(OrderView):
                                         money_filter(r.amount, self.request.event.currency)
                                     ))
 
-                    # TODO: Log actions
+                    self.order.log_action('pretix.event.order.refund.created', {
+                        'local_id': r.local_id,
+                        'provider': r.provider,
+                    }, user=self.request.user)
                     if self.start_form.cleaned_data.get('action') == 'mark_refunded':
                         mark_order_refunded(self.order, user=self.request.user)
                     elif self.start_form.cleaned_data.get('action') == 'mark_pending':
@@ -613,7 +629,7 @@ class OrderTransition(OrderView):
                     fee=None
                 )
             try:
-                p.confirm()
+                p.confirm(user=self.request.user)
             except Quota.QuotaExceededException as e:
                 messages.error(self.request, str(e))
             except PaymentException as e:

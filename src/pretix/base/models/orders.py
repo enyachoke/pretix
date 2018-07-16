@@ -887,8 +887,12 @@ class OrderPayment(models.Model):
         self.payment_date = now()
         self.save()
 
+        self.order.log_action('pretix.event.order.payment.confirmed', {
+            'local_id': self.local_id,
+            'provider': self.provider,
+        }, user=user, auth=auth)
+
         if self.order.status == Order.STATUS_PAID:
-            # TODO: overpay detection?
             return
 
         payment_sum = self.order.payments.filter(
@@ -1103,6 +1107,11 @@ class OrderRefund(models.Model):
         self.state = self.REFUND_STATE_DONE
         self.execution_date = self.execution_date or now()
         self.save()
+
+        self.order.log_action('pretix.event.order.refunds.done', {
+            'local_id': self.local_id,
+            'provider': self.provider,
+        }, user=user, auth=auth)
 
         if self.payment and self.payment.refunded_amount >= self.payment.amount:
             self.payment.state = OrderPayment.PAYMENT_STATE_REFUNDED

@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.core.files import File
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
@@ -353,6 +353,16 @@ class OrderPayChangeMethod(EventViewMixin, OrderDetailMixin, TemplateView):
         })
 
     @cached_property
+    def open_fees(self):
+        e = OrderPayment.objects.filter(
+            fee=OuterRef('pk'),
+            state=OrderPayment.PAYMENT_STATE_CONFIRMED
+        )
+        return self.order.fees.annotate(has_p=Exists(e)).filter(
+            Q(fee_type=OrderFee.FEE_TYPE_PAYMENT) & ~Q(has_p=True)
+        )
+
+    @cached_property
     def open_payment(self):
         lp = self.order.payments.last()
         if lp and lp.state not in (OrderPayment.PAYMENT_STATE_CONFIRMED, OrderPayment.PAYMENT_STATE_REFUNDED):
@@ -370,10 +380,7 @@ class OrderPayChangeMethod(EventViewMixin, OrderDetailMixin, TemplateView):
         for provider in self.request.event.get_payment_providers().values():
             if not provider.is_enabled or not provider.order_change_allowed(self.order):
                 continue
-            if self.open_payment and self.open_payment.fee:
-                current_fee = self.open_payment.fee.value
-            else:
-                current_fee = Decimal('0.00')
+            current_fee = sum(f.value for f in self.open_fees) or Decimal('0.00')
             fee = provider.calculate_fee(pending_sum - current_fee)
             providers.append({
                 'provider': provider,
@@ -393,8 +400,12 @@ class OrderPayChangeMethod(EventViewMixin, OrderDetailMixin, TemplateView):
                 request.session['payment'] = p['provider'].identifier
                 request.session['payment_change_{}'.format(self.order.pk)] = '1'
 
-                if self.open_payment and self.open_payment.fee:
-                    fee = self.open_payment.fee
+                fees = list(self.open_fees)
+                if fees:
+                    fee = fees[0]
+                    if len(fees) > 1:
+                        for f in fees[1:]:
+                            f.delete()
                 else:
                     fee = OrderFee(fee_type=OrderFee.FEE_TYPE_PAYMENT, value=Decimal('0.00'), order=self.order)
                 old_fee = fee.value

@@ -73,7 +73,7 @@
                             {% trans "Transfer" context "amount_label" %}
                             <div class="input-group">
                                 <input type="text" name="refund-offsetting"
-                                       title="" class="form-control">
+                                       title="" class="form-control" value="{{ 0|floatformat:2 }}">
                                 <span class="input-group-addon">
                                             {{ request.event.currency }}
                                         </span>

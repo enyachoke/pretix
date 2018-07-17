@@ -13,15 +13,18 @@ from django.http import HttpRequest
 from django.template.loader import get_template
 from django.utils.timezone import now
 from django.utils.translation import pgettext_lazy, ugettext_lazy as _
-from i18nfield.forms import I18nFormField, I18nTextarea
+from i18nfield.forms import I18nFormField, I18nTextarea, I18nTextInput
 from i18nfield.strings import LazyI18nString
 
+from pretix.base.forms import PlaceholderValidator
 from pretix.base.models import (
     CartPosition, Event, Order, OrderPayment, OrderRefund, Quota,
 )
 from pretix.base.reldate import RelativeDateField, RelativeDateWrapper
 from pretix.base.settings import SettingsSandbox
 from pretix.base.signals import register_payment_providers
+from pretix.base.templatetags.money import money_filter
+from pretix.base.templatetags.rich_text import rich_text
 from pretix.helpers.money import DecimalTextInput
 from pretix.presale.views import get_cart_total
 from pretix.presale.views.cart import get_or_create_cart_id
@@ -552,7 +555,7 @@ class BasePaymentProvider:
 
         :param order: The order object
         """
-        return _('Payment provider: %s' % self.verbose_name)
+        return ''
 
     def payment_refund_supported(self, payment: OrderPayment) -> bool:
         """
@@ -655,11 +658,90 @@ class BoxOfficeProvider(BasePaymentProvider):
         return False
 
 
+class ManualPayment(BasePaymentProvider):
+    identifier = 'manual'
+    verbose_name = _('Manual payment')
+
+    @property
+    def is_implicit(self):
+        return 'pretix.plugins.manualpayment' not in self.event.plugins
+
+    @property
+    def public_name(self):
+        return str(self.settings.get('public_name', as_type=LazyI18nString))
+
+    @property
+    def settings_form_fields(self):
+        d = OrderedDict(
+            [
+                ('public_name', I18nFormField(
+                    label=_('Payment method name'),
+                    widget=I18nTextInput,
+                )),
+                ('checkout_description', I18nFormField(
+                    label=_('Payment process description during checkout'),
+                    help_text=_('This text will be shown during checkout when the user selects this payment method. '
+                                'It should give a short explanation on this payment method.'),
+                    widget=I18nTextarea,
+                )),
+                ('email_instructions', I18nFormField(
+                    label=_('Payment process description in order confirmation emails'),
+                    help_text=_('This text will be included for the {payment_info} placeholder in order confirmation '
+                                'mails. It should instruct the user on how to proceed with the payment. You can use'
+                                'the placeholders {order}, {total}, {currency} and {total_with_currency}'),
+                    widget=I18nTextarea,
+                    validators=[PlaceholderValidator(['{order}', '{total}', '{currency}', '{total_with_currency}'])],
+                )),
+                ('pending_description', I18nFormField(
+                    label=_('Payment process description for pending orders'),
+                    help_text=_('This text will be shown on the order confirmation page for pending orders. '
+                                'It should instruct the user on how to proceed with the payment. You can use'
+                                'the placeholders {order}, {total}, {currency} and {total_with_currency}'),
+                    widget=I18nTextarea,
+                    validators=[PlaceholderValidator(['{order}', '{total}', '{currency}', '{total_with_currency}'])],
+                )),
+            ] + list(super().settings_form_fields.items())
+        )
+        d.move_to_end('_enabled', last=False)
+        return d
+
+    def payment_form_render(self, request) -> str:
+        return rich_text(
+            str(self.settings.get('checkout_description', as_type=LazyI18nString))
+        )
+
+    def checkout_prepare(self, request, total):
+        return True
+
+    def payment_is_valid_session(self, request):
+        return True
+
+    def checkout_confirm_render(self, request):
+        return self.payment_form_render(request)
+
+    def format_map(self, order):
+        return {
+            'order': order.code,
+            'total': order.total,
+            'currency': self.event.currency,
+            'total_with_currency': money_filter(order.total, self.event.currency)
+        }
+
+    def order_pending_mail_render(self, order) -> str:
+        msg = str(self.settings.get('email_instructions', as_type=LazyI18nString)).format_map(self.format_map(order))
+        return msg
+
+    def order_pending_render(self, request, order) -> str:
+        return rich_text(
+            str(self.settings.get('pending_description', as_type=LazyI18nString)).format_map(self.format_map(order))
+        )
+
+
 class OffsettingProvider(BasePaymentProvider):
-    is_implicit = True
     is_enabled = True
     identifier = "offsetting"
     verbose_name = _("Offsetting")
+    is_implicit = True
 
     def execute_payment(self, request: HttpRequest, payment: OrderPayment):
         try:
@@ -683,4 +765,4 @@ class OffsettingProvider(BasePaymentProvider):
 
 @receiver(register_payment_providers, dispatch_uid="payment_free")
 def register_payment_provider(sender, **kwargs):
-    return [FreeOrderProvider, BoxOfficeProvider, OffsettingProvider]
+    return [FreeOrderProvider, BoxOfficeProvider, OffsettingProvider, ManualPayment]

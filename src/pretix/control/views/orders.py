@@ -607,7 +607,7 @@ class OrderTransition(OrderView):
 
     def post(self, *args, **kwargs):
         to = self.request.POST.get('status', '')
-        if self.order.status in (Order.STATUS_PENDING, Order.STATUS_EXPIRED) and to == 'p':
+        if self.order.status in (Order.STATUS_PENDING, Order.STATUS_EXPIRED) and to == 'p' and self.mark_paid_form.is_valid():
             self.order.payments.filter(state__in=(OrderPayment.PAYMENT_STATE_PENDING,
                                                   OrderPayment.PAYMENT_STATE_CREATED)) \
                 .update(state=OrderPayment.PAYMENT_STATE_CANCELED)
@@ -617,20 +617,21 @@ class OrderTransition(OrderView):
                 p = self.order.payments.create(
                     state=OrderPayment.PAYMENT_STATE_CREATED,
                     provider='manual',
-                    amount=self.order.pending_sum,
+                    amount=ps,
                     fee=None
                 )
-            try:
-                p.confirm(user=self.request.user)
-            except Quota.QuotaExceededException as e:
-                messages.error(self.request, str(e))
-            except PaymentException as e:
-                messages.error(self.request, str(e))
-            except SendMailException:
-                messages.warning(self.request, _('The order has been marked as paid, but we were unable to send a '
-                                                 'confirmation mail.'))
-            else:
-                messages.success(self.request, _('The order has been marked as paid.'))
+                try:
+                    p.confirm(user=self.request.user, count_waitinglist=False,
+                              force=self.mark_paid_form.cleaned_data.get('force', False))
+                except Quota.QuotaExceededException as e:
+                    messages.error(self.request, str(e))
+                except PaymentException as e:
+                    messages.error(self.request, str(e))
+                except SendMailException:
+                    messages.warning(self.request, _('The order has been marked as paid, but we were unable to send a '
+                                                     'confirmation mail.'))
+                else:
+                    messages.success(self.request, _('The order has been marked as paid.'))
         elif self.order.cancel_allowed() and to == 'c':
             cancel_order(self.order, user=self.request.user, send_mail=self.request.POST.get("send_email") == "on")
             messages.success(self.request, _('The order has been canceled.'))

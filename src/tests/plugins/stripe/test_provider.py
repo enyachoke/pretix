@@ -200,7 +200,7 @@ def test_refund_success(env, factory, monkeypatch):
     event, order = env
 
     def charge_retr(*args, **kwargs):
-        def refund_create():
+        def refund_create(amount):
             pass
 
         c = MockedCharge()
@@ -230,12 +230,12 @@ def test_refund_unavailable(env, factory, monkeypatch):
     event, order = env
 
     def charge_retr(*args, **kwargs):
-        def refund_create():
+        def refund_create(amount):
             raise APIConnectionError(message='Foo')
 
         c = MockedCharge()
         c.refunds = object()
-        c.refunds.create = refund_create()
+        c.refunds.create = refund_create
         return c
 
     monkeypatch.setattr("stripe.Charge.retrieve", charge_retr)

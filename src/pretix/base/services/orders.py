@@ -932,7 +932,11 @@ class OrderChangeManager:
 
         split_order.total = sum([p.price for p in split_positions])
         if split_order.total != Decimal('0.00') and self.order.status != Order.STATUS_PAID:
-            payment_fee = self._get_payment_provider().calculate_fee(split_order.total)
+            pp = self._get_payment_provider()
+            if pp:
+                payment_fee = pp.calculate_fee(split_order.total)
+            else:
+                payment_fee = Decimal('0.00')
             fee = split_order.fees.get_or_create(fee_type=OrderFee.FEE_TYPE_PAYMENT, defaults={'value': 0})[0]
             fee.value = payment_fee
             fee._calculate_tax()
@@ -1122,9 +1126,12 @@ class OrderChangeManager:
             CachedCombinedTicket.objects.filter(order=self.split_order).delete()
 
     def _get_payment_provider(self):
-        pprov = self.order.event.get_payment_providers().get(self.order.payment_provider)
+        lp = self.order.payments.last()
+        if not lp:
+            return None
+        pprov = lp.payment_provider
         if not pprov:
-            raise OrderError(error_messages['internal'])
+            return None
         return pprov
 
 

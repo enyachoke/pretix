@@ -11,7 +11,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.functional import cached_property
 from django.utils.timezone import now
-from django.utils.translation import ugettext as _, ugettext_noop
+from django.utils.translation import ugettext as _
 from django.views.generic import DetailView, ListView, View
 
 from pretix.base.models import Order, OrderPayment, Quota
@@ -82,18 +82,25 @@ class ActionView(View):
         try:
             p.confirm(user=self.request.user)
         except Quota.QuotaExceededException as e:
-            trans.state = BankTransaction.STATE_ERROR
-            trans.message = str(e)
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            })
         except SendMailException:
-            trans.state = BankTransaction.STATE_ERROR
-            trans.message = ugettext_noop('Problem sending email.')
+            return JsonResponse({
+                'status': 'error',
+                'message': _('Problem sending email.')
+            })
         else:
             trans.state = BankTransaction.STATE_VALID
+            trans.save()
             trans.order.payments.filter(
                 provider='banktransfer',
                 state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
             ).update(state=OrderPayment.PAYMENT_STATE_CANCELED)
-        trans.save()
+            return JsonResponse({
+                'status': 'ok',
+            })
 
     def _assign(self, trans, code):
         try:

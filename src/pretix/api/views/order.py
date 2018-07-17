@@ -23,8 +23,9 @@ from pretix.api.serializers.order import (
     OrderSerializer,
 )
 from pretix.base.models import (
-    Invoice, Order, OrderPosition, Quota, TeamAPIToken,
+    Invoice, Order, OrderPayment, OrderPosition, Quota, TeamAPIToken,
 )
+from pretix.base.payment import PaymentException
 from pretix.base.services.invoices import (
     generate_cancellation, generate_invoice, invoice_pdf, invoice_qualified,
     regenerate_invoice,
@@ -32,7 +33,7 @@ from pretix.base.services.invoices import (
 from pretix.base.services.mail import SendMailException
 from pretix.base.services.orders import (
     OrderError, cancel_order, extend_order, mark_order_expired,
-    mark_order_paid, mark_order_refunded,
+    mark_order_refunded,
 )
 from pretix.base.services.tickets import (
     get_cachedticket_for_order, get_cachedticket_for_position,
@@ -122,16 +123,28 @@ class OrderViewSet(CreateModelMixin, viewsets.ReadOnlyModelViewSet):
         order = self.get_object()
 
         if order.status in (Order.STATUS_PENDING, Order.STATUS_EXPIRED):
-            try:
-                mark_order_paid(
-                    order, manual=True,
-                    user=request.user if request.user.is_authenticated else None,
-                    auth=request.auth,
+            order.payments.filter(state__in=(OrderPayment.PAYMENT_STATE_PENDING,
+                                             OrderPayment.PAYMENT_STATE_CREATED)) \
+                .update(state=OrderPayment.PAYMENT_STATE_CANCELED)
+            # TODO: if the last payment is manual, keep it
+            ps = order.pending_sum
+            if ps:
+                p = order.payments.create(
+                    state=OrderPayment.PAYMENT_STATE_CREATED,
+                    provider='manual',
+                    amount=ps,
+                    fee=None
                 )
-            except Quota.QuotaExceededException as e:
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            except SendMailException:
-                pass
+                try:
+                    p.confirm(auth=self.request.auth,
+                              user=self.request.user if request.user.is_authenticated else None,
+                              count_waitinglist=False)
+                except Quota.QuotaExceededException as e:
+                    return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                except PaymentException as e:
+                    return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                except SendMailException:
+                    pass
 
             return self.retrieve(request, [], **kwargs)
         return Response(

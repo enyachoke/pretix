@@ -57,23 +57,6 @@ def test_discard(env, client):
 
 
 @pytest.mark.django_db
-def test_accept_wrong_amount(env, client):
-    job = BankImportJob.objects.create(event=env[0])
-    trans = BankTransaction.objects.create(event=env[0], import_job=job, payer='Foo',
-                                           state=BankTransaction.STATE_INVALID,
-                                           amount=12, date='unknown', order=env[2])
-    client.login(email='dummy@dummy.dummy', password='dummy')
-    r = json.loads(client.post('/control/event/{}/{}/banktransfer/action/'.format(env[0].organizer.slug, env[0].slug), {
-        'action_{}'.format(trans.pk): 'accept',
-    }).content.decode('utf-8'))
-    assert r['status'] == 'ok'
-    trans.refresh_from_db()
-    assert trans.state == BankTransaction.STATE_VALID
-    env[2].refresh_from_db()
-    assert env[2].status == Order.STATUS_PAID
-
-
-@pytest.mark.django_db
 def test_assign_order(env, client):
     job = BankImportJob.objects.create(event=env[0])
     trans = BankTransaction.objects.create(event=env[0], import_job=job, payer='Foo',

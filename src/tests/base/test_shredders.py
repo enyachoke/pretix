@@ -9,7 +9,7 @@ from django.utils.timezone import now
 
 from pretix.base.models import (
     CachedCombinedTicket, CachedTicket, Event, InvoiceAddress, Order,
-    OrderPosition, Organizer, QuestionAnswer,
+    OrderPayment, OrderPosition, Organizer, QuestionAnswer,
 )
 from pretix.base.services.invoices import generate_invoice, invoice_pdf_task
 from pretix.base.services.tickets import generate, generate_order
@@ -295,12 +295,12 @@ def test_cached_tickets(event, order):
 
 @pytest.mark.django_db
 def test_payment_info_shredder(event, order):
-    order.payment_info = json.dumps({
+    order.payments.create(info=json.dumps({
         'reference': 'Verwendungszweck 1',
         'date': '2018-05-01',
         'payer': 'Hans',
         'trans_id': 12
-    })
+    }), provider='banktransfer', amount=order.total, state=OrderPayment.PAYMENT_STATE_PENDING)
     order.save()
 
     s = PaymentInfoShredder(event)

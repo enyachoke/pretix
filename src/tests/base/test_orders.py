@@ -13,7 +13,7 @@ from pretix.base.models import (
     CartPosition, Event, InvoiceAddress, Item, Order, OrderPosition, Organizer,
 )
 from pretix.base.models.items import SubEventItem
-from pretix.base.models.orders import OrderFee
+from pretix.base.models.orders import OrderFee, OrderPayment
 from pretix.base.payment import FreeOrderProvider
 from pretix.base.reldate import RelativeDate, RelativeDateWrapper
 from pretix.base.services.invoices import generate_invoice
@@ -266,7 +266,10 @@ class OrderChangeManagerTests(TestCase):
             code='FOO', event=self.event, email='dummy@dummy.test',
             status=Order.STATUS_PENDING, locale='en',
             datetime=now(), expires=now() + timedelta(days=10),
-            total=Decimal('46.00'), payment_provider='banktransfer'
+            total=Decimal('46.00'),
+        )
+        self.order.payments.create(
+            provider='banktransfer', state=OrderPayment.PAYMENT_STATE_CREATED, amount=self.order.total
         )
         self.tr7 = self.event.tax_rules.create(rate=Decimal('7.00'))
         self.tr19 = self.event.tax_rules.create(rate=Decimal('19.00'))
@@ -623,7 +626,7 @@ class OrderChangeManagerTests(TestCase):
         self.ocm.change_price(self.op1, Decimal('5.00'))
         self.ocm.commit()
         self.order.refresh_from_db()
-        assert self.order.total == 46 - 5
+        assert self.order.total == Decimal('28.00')
         assert self.order.status == Order.STATUS_PAID
 
     def test_add_item_quota_required(self):
@@ -775,10 +778,10 @@ class OrderChangeManagerTests(TestCase):
         assert fee.tax_rate == Decimal('19.00')
         assert fee.tax_value == Decimal('0.05')
 
+        self.ocm = OrderChangeManager(self.order, None)
         ia = self._enable_reverse_charge()
         self.ocm.recalculate_taxes()
         self.ocm.commit()
-        self.ocm = OrderChangeManager(self.order, None)
         ops = list(self.order.positions.all())
         for op in ops:
             assert op.price == Decimal('21.50')
@@ -794,6 +797,7 @@ class OrderChangeManagerTests(TestCase):
         ia.vat_id_validated = False
         ia.save()
 
+        self.ocm = OrderChangeManager(self.order, None)
         self.ocm.recalculate_taxes()
         self.ocm.commit()
         ops = list(self.order.positions.all())
@@ -1026,6 +1030,9 @@ class OrderChangeManagerTests(TestCase):
 
         self.order.status = Order.STATUS_PAID
         self.order.save()
+        payment = self.order.payments.first()
+        payment.state = OrderPayment.PAYMENT_STATE_CONFIRMED
+        payment.save()
 
         # Split
         self.ocm.split(self.op2)

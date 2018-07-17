@@ -56,35 +56,35 @@ def _handle_transaction(trans: BankTransaction, code: str, event: Event=None, or
     elif trans.order.status == Order.STATUS_CANCELED:
         trans.state = BankTransaction.STATE_ERROR
         trans.message = ugettext_noop('The order has already been canceled.')
-
-    p = trans.order.payments.get_or_create(
-        amount=trans.amount,
-        provider='banktransfer',
-        state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
-        defaults={
-            'state': OrderPayment.PAYMENT_STATE_CREATED,
-        }
-    )
-    p.info_data = {
-        'reference': trans.reference,
-        'date': trans.date,
-        'payer': trans.payer,
-        'trans_id': trans.pk
-    }
-    try:
-        p.confirm()
-    except Quota.QuotaExceededException as e:
-        trans.state = BankTransaction.STATE_ERROR
-        trans.message = str(e)
-    except SendMailException:
-        trans.state = BankTransaction.STATE_ERROR
-        trans.message = ugettext_noop('Problem sending email.')
     else:
-        trans.state = BankTransaction.STATE_VALID
-        trans.order.payments.filter(
+        p = trans.order.payments.get_or_create(
+            amount=trans.amount,
             provider='banktransfer',
             state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
-        ).update(state=OrderPayment.PAYMENT_STATE_CANCELED)
+            defaults={
+                'state': OrderPayment.PAYMENT_STATE_CREATED,
+            }
+        )[0]
+        p.info_data = {
+            'reference': trans.reference,
+            'date': trans.date,
+            'payer': trans.payer,
+            'trans_id': trans.pk
+        }
+        try:
+            p.confirm()
+        except Quota.QuotaExceededException as e:
+            trans.state = BankTransaction.STATE_ERROR
+            trans.message = str(e)
+        except SendMailException:
+            trans.state = BankTransaction.STATE_ERROR
+            trans.message = ugettext_noop('Problem sending email.')
+        else:
+            trans.state = BankTransaction.STATE_VALID
+            trans.order.payments.filter(
+                provider='banktransfer',
+                state__in=(OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING),
+            ).update(state=OrderPayment.PAYMENT_STATE_CANCELED)
     trans.save()
 
 

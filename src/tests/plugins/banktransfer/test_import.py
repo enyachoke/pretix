@@ -7,7 +7,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import now
 
 from pretix.base.models import (
-    Event, Item, Order, OrderPosition, Organizer, Quota, Team, User,
+    Event, Item, Order, OrderPayment, OrderPosition, Organizer, Quota, Team,
+    User,
 )
 from pretix.plugins.banktransfer.models import BankImportJob
 from pretix.plugins.banktransfer.tasks import process_banktransfers
@@ -110,7 +111,43 @@ def test_mark_paid(env, job):
 
 
 @pytest.mark.django_db
-def test_check_amount(env, job):
+def test_underpaid(env, job):
+    process_banktransfers(job, [{
+        'payer': 'Karla Kundin',
+        'reference': 'Bestellung DUMMY1Z3AS',
+        'date': '2016-01-26',
+        'amount': '22.50'
+    }])
+    env[2].refresh_from_db()
+    assert env[2].status == Order.STATUS_PENDING
+    p = env[2].payments.last()
+    assert p.amount == Decimal('22.50')
+    assert p.state == OrderPayment.PAYMENT_STATE_CONFIRMED
+    assert env[2].pending_sum == Decimal('0.50')
+
+
+@pytest.mark.django_db
+def test_in_parts(env, job):
+    process_banktransfers(job, [{
+        'payer': 'Karla Kundin',
+        'reference': 'Bestellung DUMMY1Z3AS',
+        'date': '2016-01-26',
+        'amount': '10.00'
+    }])
+    process_banktransfers(job, [{
+        'payer': 'Karla Kundin',
+        'reference': 'Bestellung DUMMY1Z3AS',
+        'date': '2016-01-26',
+        'amount': '13.00'
+    }])
+    env[2].refresh_from_db()
+    assert env[2].status == Order.STATUS_PAID
+    assert env[2].payments.count() == 2
+    assert env[2].pending_sum == Decimal('0.00')
+
+
+@pytest.mark.django_db
+def test_overpaid(env, job):
     process_banktransfers(job, [{
         'payer': 'Karla Kundin',
         'reference': 'Bestellung DUMMY1Z3AS',
@@ -118,7 +155,11 @@ def test_check_amount(env, job):
         'amount': '23.50'
     }])
     env[2].refresh_from_db()
-    assert env[2].status == Order.STATUS_PENDING
+    assert env[2].status == Order.STATUS_PAID
+    p = env[2].payments.last()
+    assert p.amount == Decimal('23.50')
+    assert p.state == OrderPayment.PAYMENT_STATE_CONFIRMED
+    assert env[2].pending_sum == Decimal('-0.50')
 
 
 @pytest.mark.django_db

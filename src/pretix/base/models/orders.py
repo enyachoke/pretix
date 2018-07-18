@@ -784,6 +784,10 @@ class OrderPayment(models.Model):
     Represents a payment or payment attempt for an order.
 
 
+    :param id: A globally unique ID for this payment
+    :type id:
+    :param local_id: An ID of this payment, counting from one for every order independently.
+    :type local_id: int
     :param state: The state of the payment, one of ``created``, ``pending``, ``confirmed``, ``failed``,
       ``canceled``, or ``refunded``.
     :type state: str
@@ -797,8 +801,10 @@ class OrderPayment(models.Model):
     :type payment_date: datetime
     :param provider: The payment provider in use
     :type provider: str
-    :param info_data: Provider-specific meta information
-    :type info_data: dict
+    :param info: Provider-specific meta information (in JSON format)
+    :type info: str
+    :param fee: The ``OrderFee`` object used to track the fee for this order.
+    :type fee: pretix.base.models.OrderFee
     """
     PAYMENT_STATE_CREATED = 'created'
     PAYMENT_STATE_PENDING = 'pending'
@@ -854,6 +860,10 @@ class OrderPayment(models.Model):
 
     @property
     def info_data(self):
+        """
+        This property allows convenient access to the data stored in the ``info``
+        attribute by automatically encoding and decoding the content as JSON.
+        """
         return json.loads(self.info) if self.info else '{}'
 
     @info_data.setter
@@ -862,18 +872,26 @@ class OrderPayment(models.Model):
 
     @cached_property
     def payment_provider(self):
+        """
+        Cached access to an instance of the payment provider in use.
+        """
         return self.order.event.get_payment_providers().get(self.provider)
 
     def confirm(self, count_waitinglist=True, send_mail=True, force=False, user=None, auth=None, mail_text=''):
         """
-        Marks the payment as complete. If applicable and possible, this also marks the order as paid.
+        Marks the payment as complete. If possible, this also marks the order as paid if no further
+        payment is required
 
+        :param count_waitinglist: Whether, when calculating quota, people on the waiting list should be taken into
+                                  consideration (default: ``True``).
+        :type count_waitinglist: boolean
         :param force: Whether this payment should be marked as paid even if no remaining
                       quota is available (default: ``False``).
         :type force: boolean
         :param send_mail: Whether an email should be sent to the user about this event (default: ``True``).
         :type send_mail: boolean
-        :param user: The user that performed the change
+        :param user: The user who performed the change
+        :param auth: The API auth token that performed the change
         :param mail_text: Additional text to be included in the email
         :type mail_text: str
         :raises Quota.QuotaExceededException: if the quota is exceeded and ``force`` is ``False``
@@ -966,6 +984,10 @@ class OrderPayment(models.Model):
 
     @property
     def refunded_amount(self):
+        """
+        The sum of all refund amounts in ``done``, ``transit``, or ``created`` states associated
+        with this payment.
+        """
         return self.refunds.filter(
             state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_TRANSIT,
                        OrderRefund.REFUND_STATE_CREATED)
@@ -973,6 +995,11 @@ class OrderPayment(models.Model):
 
     @property
     def full_id(self):
+        """
+        The full human-readable ID of this payment, constructed by the order code and the ``local_id``
+        field with ``-P-`` in between.
+        :return:
+        """
         return '{}-P-{}'.format(self.order.code, self.local_id)
 
     def save(self, *args, **kwargs):
@@ -981,6 +1008,19 @@ class OrderPayment(models.Model):
         super().save(*args, **kwargs)
 
     def create_external_refund(self, amount=None, execution_date=None, info='{}'):
+        """
+        This should be called to create an OrderRefund object when a refund has triggered
+        by an external source, e.g. when a credit card payment has been refunded by the
+        credit card provider.
+
+        :param amount: Amount to refund. If not given, the full payment amount will be used.
+        :type amount: Decimal
+        :param execution_date: Date of the refund. Defaults to the current time.
+        :type execution_date: datetime
+        :param info: Additional information, defaults to ``"{}"``.
+        :type info: str
+        :return: OrderRefund
+        """
         r = self.order.refunds.create(
             state=OrderRefund.REFUND_STATE_EXTERNAL,
             source=OrderRefund.REFUND_SOURCE_EXTERNAL,
@@ -1002,12 +1042,15 @@ class OrderRefund(models.Model):
     """
     Represents a refund or refund attempt for an order.
 
-
-    :param state: The state of the payment, one of ``requested``, ``approved``, ``external``, ``transit``,
-      ``done``, ``rejected``, or ``canceled``.
+    :param id: A globally unique ID for this refund
+    :type id:
+    :param local_id: An ID of this refund, counting from one for every order independently.
+    :type local_id: int
+    :param state: The state of the refund, one of ``created``, ``transit``, ``external``, ``canceled``,
+      ``failed``, or ``done``.
     :type state: str
-    :param source: How this was created, one of ``buyer``, ``admin``, or ``external``.
-    :param amount: The payment amount
+    :param source: How this refund was started, one of ``buyer``, ``admin``, or ``external``.
+    :param amount: The refund amount
     :type amount: Decimal
     :param order: The order that is refunded
     :type order: Order
@@ -1017,8 +1060,8 @@ class OrderRefund(models.Model):
     :type execution_date: datetime
     :param provider: The payment provider in use
     :type provider: str
-    :param info_data: Provider-specific meta information
-    :type info_data: dict
+    :param info: Provider-specific meta information in JSON format
+    :type info: dict
     """
     # REFUND_STATE_REQUESTED = 'requested'
     # REFUND_STATE_APPROVED = 'approved'
@@ -1093,6 +1136,10 @@ class OrderRefund(models.Model):
 
     @property
     def info_data(self):
+        """
+        This property allows convenient access to the data stored in the ``info``
+        attribute by automatically encoding and decoding the content as JSON.
+        """
         return json.loads(self.info) if self.info else '{}'
 
     @info_data.setter
@@ -1101,13 +1148,17 @@ class OrderRefund(models.Model):
 
     @cached_property
     def payment_provider(self):
+        """
+        Cached access to an instance of the payment provider in use.
+        """
         return self.order.event.get_payment_providers().get(self.provider)
 
     def done(self, user=None, auth=None):
         """
-        Marks the refund as complete.
+        Marks the refund as complete. This does not modify the state of the order.
 
-        :param user: The user that performed the change
+        :param user: The user who performed the change
+        :param user: The API auth token that performed the change
         """
         self.state = self.REFUND_STATE_DONE
         self.execution_date = self.execution_date or now()
@@ -1124,6 +1175,11 @@ class OrderRefund(models.Model):
 
     @property
     def full_id(self):
+        """
+        The full human-readable ID of this refund, constructed by the order code and the ``local_id``
+        field with ``-R-`` in between.
+        :return:
+        """
         return '{}-R-{}'.format(self.order.code, self.local_id)
 
     def save(self, *args, **kwargs):
@@ -1134,8 +1190,25 @@ class OrderRefund(models.Model):
 
 class OrderFee(models.Model):
     """
-    An OrderFee objet represents a fee that is added to the order total independently of
+    An OrderFee object represents a fee that is added to the order total independently of
     the actual positions. This might for example be a payment or a shipping fee.
+
+    :param value: Gross price of this fee
+    :type value: Decimal
+    :param order: Order this fee is charged with
+    :type order: Order
+    :param fee_type: The type of the fee, currently ``payment``, ``shipping``, ``service``, ``giftcard``, or ``other``.
+    :type fee_type: str
+    :param description: A human-redable description of the fee
+    :type description: str
+    :param internal_type: An internal string to group fees by, e.g. the identifier string of a payment provider
+    :type internal_type: str
+    :param tax_rate: The tax rate applied to this fee
+    :type tax_rate: Decimal
+    :param tax_rule: The tax rule applied to this fee
+    :type tax_rule: TaxRule
+    :param tax_value: The tax amount included in the price
+    :type tax_value: Decimal
     """
     FEE_TYPE_PAYMENT = "payment"
     FEE_TYPE_SHIPPING = "shipping"
@@ -1234,6 +1307,18 @@ class OrderPosition(AbstractPosition):
 
     :param order: The order this position is a part of
     :type order: Order
+    :param positionid: A local ID of this position, counted for each order individually
+    :type positionid: int
+    :param tax_rate: The tax rate applied to this position
+    :type tax_rate: Decimal
+    :param tax_rule: The tax rule applied to this position
+    :type tax_rule: TaxRule
+    :param tax_value: The tax amount included in the price
+    :type tax_value: Decimal
+    :param secret: The secret used for ticket QR codes
+    :type secret: str
+    :param pseudonymization_id: The QR code content for lead scanning
+    :type pseudonymization_id: str
     """
     positionid = models.PositiveIntegerField(default=1)
     order = models.ForeignKey(

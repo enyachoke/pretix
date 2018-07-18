@@ -54,6 +54,8 @@ The provider class
 
       This is an abstract attribute, you **must** override this!
 
+   .. autoattribute:: public_name
+
    .. autoattribute:: is_enabled
 
    .. automethod:: calculate_fee
@@ -62,49 +64,55 @@ The provider class
 
    .. automethod:: settings_content_render
 
-   .. automethod:: render_invoice_text
+   .. automethod:: is_allowed
 
    .. automethod:: payment_form_render
 
    .. automethod:: payment_form
 
-   .. automethod:: is_allowed
-
    .. autoattribute:: payment_form_fields
 
-   .. automethod:: checkout_prepare
-
    .. automethod:: payment_is_valid_session
+
+   .. automethod:: checkout_prepare
 
    .. automethod:: checkout_confirm_render
 
       This is an abstract method, you **must** override this!
 
-   .. automethod:: payment_perform
+   .. automethod:: execute_payment
 
    .. automethod:: order_pending_mail_render
 
-   .. automethod:: order_pending_render
+   .. automethod:: payment_pending_render
 
       This is an abstract method, you **must** override this!
+
+   .. automethod:: render_invoice_text
 
    .. automethod:: order_change_allowed
 
    .. automethod:: order_can_retry
 
-   .. automethod:: order_prepare
+   .. automethod:: payment_prepare
 
    .. automethod:: order_paid_render
 
-   .. automethod:: order_control_render
+   .. automethod:: payment_control_render
 
-   .. automethod:: order_control_refund_render
+   .. automethod:: payment_refund_supported
 
-   .. automethod:: order_control_refund_perform
+   .. automethod:: payment_partial_refund_supported
 
-   .. automethod:: is_implicit
+   .. automethod:: execute_refund
+
+   .. autoattribute:: abort_pending_allowed
 
    .. automethod:: shred_payment_info
+
+   .. autoattribute:: is_implicit
+
+   .. autoattribute:: is_meta
 
 
 Additional views

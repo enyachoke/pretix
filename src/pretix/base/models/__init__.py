@@ -15,7 +15,7 @@ from .log import LogEntry
 from .notifications import NotificationSetting
 from .orders import (
     AbstractPosition, CachedCombinedTicket, CachedTicket, CartPosition,
-    InvoiceAddress, Order, OrderPayment, OrderPosition, OrderRefund,
+    InvoiceAddress, Order, OrderFee, OrderPayment, OrderPosition, OrderRefund,
     QuestionAnswer, cachedcombinedticket_name, cachedticket_name,
     generate_position_secret, generate_secret,
 )

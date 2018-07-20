@@ -465,7 +465,10 @@ class BasePaymentProvider:
         """
         After the user has confirmed their purchase, this method will be called to complete
         the payment process. This is the place to actually move the money if applicable.
-        If you need any special  behavior, you can return a string
+        You will be passed an :py:class:`pretix.base.models.OrderPayment` object that contains
+        the amount of money that should be paid.
+
+        If you need any special behavior, you can return a string
         containing the URL the user will be redirected to. If you are done with your process
         you should return the user to the order's detail page.
 
@@ -478,7 +481,9 @@ class BasePaymentProvider:
         order unpaid. The user will be redirected to the order's detail page by default.
 
         On errors, you should raise a ``PaymentException``.
+
         :param order: The order object
+        :param payment: An ``OrderPayment`` instance
         """
         return None
 
@@ -491,19 +496,6 @@ class BasePaymentProvider:
         :param order: The order object
         """
         return ""
-
-    def order_pending_render(self, request: HttpRequest, order: Order) -> str:
-        """
-        If the user visits a detail page of an order which has not yet been paid but
-        this payment method was selected during checkout, this method will be called
-        to provide HTML content for the 'payment' box on the page.
-
-        It should contain instructions on how to continue with the payment process,
-        either in form of text or buttons/links/etc.
-
-        :param order: The order object
-        """
-        raise NotImplementedError()  # NOQA
 
     def order_change_allowed(self, order: Order) -> bool:
         """

@@ -9,6 +9,10 @@ is very similar to creating an export output.
 
 Please read :ref:`Creating a plugin <pluginsetup>` first, if you haven't already.
 
+.. warning:: We changed our payment provider API a lot in pretix 2.x. Our documentation page on :ref:`payment2.0`
+             might be insightful even if you do not have a payment provider to port, as it outlines the rationale
+             behind the current design.
+
 Provider registration
 ---------------------
 
@@ -31,7 +35,7 @@ that the plugin will provide::
 The provider class
 ------------------
 
-.. class:: pretix.base.payment.BasePaymentProvider
+.. py:class:: pretix.base.payment.BasePaymentProvider
 
    The central object of each payment provider is the subclass of ``BasePaymentProvider``.
 
@@ -58,8 +62,6 @@ The provider class
 
    .. autoattribute:: is_enabled
 
-   .. automethod:: calculate_fee
-
    .. autoattribute:: settings_form_fields
 
    .. automethod:: settings_content_render
@@ -82,11 +84,13 @@ The provider class
 
    .. automethod:: execute_payment
 
+   .. automethod:: calculate_fee
+
    .. automethod:: order_pending_mail_render
 
    .. automethod:: payment_pending_render
 
-      This is an abstract method, you **must** override this!
+   .. autoattribute:: abort_pending_allowed
 
    .. automethod:: render_invoice_text
 
@@ -96,8 +100,6 @@ The provider class
 
    .. automethod:: payment_prepare
 
-   .. automethod:: order_paid_render
-
    .. automethod:: payment_control_render
 
    .. automethod:: payment_refund_supported
@@ -105,8 +107,6 @@ The provider class
    .. automethod:: payment_partial_refund_supported
 
    .. automethod:: execute_refund
-
-   .. autoattribute:: abort_pending_allowed
 
    .. automethod:: shred_payment_info
 

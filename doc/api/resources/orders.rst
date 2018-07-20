@@ -32,8 +32,8 @@ email                                 string                     The customer em
 locale                                string                     The locale used for communication with this customer
 datetime                              datetime                   Time of order creation
 expires                               datetime                   The order will expire, if it is still pending by this time
-payment_date                          date                       Date of payment receipt
-payment_provider                      string                     Payment provider used for this order
+payment_date                          date                       **DEPRECATED AND INACCURATE** Date of payment receipt
+payment_provider                      string                     **DEPRECATED AND INACCURATE** Payment provider used for this order
 total                                 money (string)             Total value of this order
 comment                               string                     Internal comment on this order
 checkin_attention                     boolean                    If ``True``, the check-in app should show a warning
@@ -74,6 +74,8 @@ downloads                             list of objects            List of ticket 
                                                                  download options.
 ├ output                              string                     Ticket output provider (e.g. ``pdf``, ``passbook``)
 └ url                                 string                     Download URL
+payments                              list of objects            List of payment processes (see below)
+refunds                               list of objects            List of refund processes (see below)
 last_modified                         datetime                   Last modification of this object
 ===================================== ========================== =======================================================
 
@@ -107,6 +109,11 @@ last_modified                         datetime                   Last modificati
 
    The attributes ``order.last_modified`` as well as the corresponding filters to the resource have been added.
    An endpoint for order creation as well as ``…/mark_refunded/`` has been added.
+
+.. versionchanged:: 2.0
+
+   The ``order.payment_date`` and ``order.payment_provider`` attributes have been deprecated in favor of the new
+   ``payments`` and ``refunds`` subresources, but will still be served and removed in 2.2.
 
 .. _order-position-resource:
 
@@ -167,6 +174,42 @@ pdf_data                              object                     Data object req
 
   The attributes ``pseudonymization_id`` and ``pdf_data`` have been added.
 
+.. _order-payment-resource:
+
+Order payment resource
+----------------------
+
+.. rst-class:: rest-resource-table
+
+===================================== ========================== =======================================================
+Field                                 Type                       Description
+===================================== ========================== =======================================================
+local_id                              integer                    Internal ID of this payment, starts at 1 for every order
+state                                 string                     Payment state, one of ``created``, ``pending``, ``confirmed``, ``canceled``, ``pending``, ``failed``, or ``refunded``
+amount                                money (string)             Payment amount
+created                               datetime                   Date and time of creation of this payment
+payment_date                          datetime                   Date and time of completion of this payment (or ``null``)
+provider                              string                     Identification string of the payment provider
+===================================== ========================== =======================================================
+
+.. _order-payment-resource:
+
+Order refund resource
+---------------------
+
+.. rst-class:: rest-resource-table
+
+===================================== ========================== =======================================================
+Field                                 Type                       Description
+===================================== ========================== =======================================================
+local_id                              integer                    Internal ID of this payment, starts at 1 for every order
+state                                 string                     Payment state, one of ``created``, ``transit``, ``external``, ``canceled``, ``failed``, or ``done``
+source                                string                     How this refund has been created, one of ``buyer``, ``admin``, or ``external``
+amount                                money (string)             Payment amount
+created                               datetime                   Date and time of creation of this payment
+payment_date                          datetime                   Date and time of completion of this payment (or ``null``)
+provider                              string                     Identification string of the payment provider
+===================================== ========================== =======================================================
 
 Order endpoints
 ---------------
@@ -275,7 +318,18 @@ Order endpoints
                 "output": "pdf",
                 "url": "https://pretix.eu/api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/download/pdf/"
               }
-            ]
+            ],
+            "payments": [
+              {
+                "local_id": 1,
+                "state": "confirmed",
+                "amount": "23.00",
+                "created": "2017-12-01T10:00:00Z",
+                "payment_date": "2017-12-04T12:13:12Z",
+                "provider": "banktransfer"
+              }
+            ],
+            "refunds": []
           }
         ]
       }
@@ -390,7 +444,18 @@ Order endpoints
             "output": "pdf",
             "url": "https://pretix.eu/api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/download/pdf/"
           }
-        ]
+        ],
+        "payments": [
+          {
+            "local_id": 1,
+            "state": "confirmed",
+            "amount": "23.00",
+            "created": "2017-12-01T10:00:00Z",
+            "payment_date": "2017-12-04T12:13:12Z",
+            "provider": "banktransfer"
+          }
+        ],
+        "refunds": []
       }
 
    :param organizer: The ``slug`` field of the organizer to fetch
@@ -487,21 +552,23 @@ Order endpoints
 
    * ``code`` (optional)
    * ``status`` (optional) – Defaults to pending for non-free orders and paid for free orders. You can only set this to
-     ``"n"`` for pending or ``"p"`` for paid. If you create a paid order, the ``order_paid`` signal will **not** be
-     sent out to plugins and no email will be sent. If you want that behavior, create an unpaid order and then call
-     the ``mark_paid`` API method.
+     ``"n"`` for pending or ``"p"`` for paid. We will create a payment object for this order either in state ``created``
+     or in state ``confirmed``, depending on this value. If you create a paid order, the ``order_paid`` signal will
+     **not** be sent out to plugins and no email will be sent. If you want that behavior, create an unpaid order and
+     then call the ``mark_paid`` API method.
    * ``consume_carts`` (optional) – A list of cart IDs. All cart positions with these IDs will be deleted if the
      order creation is successful. Any quotas that become free by this operation will be credited to your order
      creation.
    * ``email``
    * ``locale``
    * ``payment_provider`` – The identifier of the payment provider set for this order. This needs to be an existing
-     payment provider. You should use ``"free"`` for free orders.
-   * ``payment_info`` (optional) – You can pass a nested JSON object that will be set as the internal ``payment_info``
-     value of the order. How this value is handled is up to the payment provider and you should only use this if you
-     know the specific payment provider in detail. Please keep in mind that the payment provider will not be called
-     to do anything about this (i.e. if you pass a bank account to a debit provider, *no* charge will be created),
-     this is just informative in case you *handled the payment already*.
+     payment provider. You should use ``"free"`` for free orders, and we strongly advise to use ``"manual"`` for all
+     orders you create as paid.
+   * ``payment_info`` (optional) – You can pass a nested JSON object that will be set as the internal ``info``
+     value of the payment object that will be created. How this value is handled is up to the payment provider and you
+     should only use this if you know the specific payment provider in detail. Please keep in mind that the payment
+     provider will not be called to do anything about this (i.e. if you pass a bank account to a debit provider, *no*
+     charge will be created), this is just informative in case you *handled the payment already*.
    * ``comment`` (optional)
    * ``checkin_attention`` (optional)
    * ``invoice_address`` (optional)

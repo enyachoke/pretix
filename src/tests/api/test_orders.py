@@ -65,7 +65,12 @@ def order(event, item, taxrule, question):
             status=Order.STATUS_PENDING, secret="k24fiuwvu8kxz3y1",
             datetime=datetime.datetime(2017, 12, 1, 10, 0, 0, tzinfo=UTC),
             expires=datetime.datetime(2017, 12, 10, 10, 0, 0, tzinfo=UTC),
-            total=23, payment_provider='banktransfer', locale='en'
+            total=23, locale='en'
+        )
+        o.payments.create(
+            provider='banktransfer',
+            state='pending',
+            amount=Decimal('23.00')
         )
         o.fees.create(fee_type=OrderFee.FEE_TYPE_PAYMENT, value=Decimal('0.25'), tax_rate=Decimal('19.00'),
                       tax_value=Decimal('0.05'), tax_rule=taxrule)
@@ -149,7 +154,18 @@ TEST_ORDER_RES = {
         "vat_id_validated": False
     },
     "positions": [TEST_ORDERPOSITION_RES],
-    "downloads": []
+    "downloads": [],
+    "payments": [
+        {
+            "local_id": 1,
+            "created": "2017-12-01T10:00:00Z",
+            "payment_date": None,
+            "provider": "banktransfer",
+            "state": "pending",
+            "amount": "23.00"
+        }
+    ],
+    "refunds": []
 }
 
 
@@ -860,7 +876,12 @@ def test_order_create(token_client, organizer, event, item, quota, question):
     assert o.locale == "en"
     assert o.total == Decimal('23.25')
     assert o.status == Order.STATUS_PENDING
-    assert o.payment_provider == "banktransfer"
+
+    p = o.payments.first()
+    assert p.provider == "banktransfer"
+    assert p.amount == o.total
+    assert p.state == "created"
+
     fee = o.fees.first()
     assert fee.fee_type == "payment"
     assert fee.value == Decimal('0.25')
@@ -968,7 +989,11 @@ def test_order_create_payment_info_optional(token_client, organizer, event, item
     )
     assert resp.status_code == 201
     o = Order.objects.get(code=resp.data['code'])
-    assert json.loads(o.payment_info) == res['payment_info']
+
+    p = o.payments.first()
+    assert p.provider == "banktransfer"
+    assert p.amount == o.total
+    assert json.loads(p.info) == res['payment_info']
 
 
 @pytest.mark.django_db
@@ -1725,7 +1750,11 @@ def test_order_create_free(token_client, organizer, event, item, quota, question
     o = Order.objects.get(code=resp.data['code'])
     assert o.total == Decimal('0.00')
     assert o.status == Order.STATUS_PAID
-    assert o.payment_provider == "free"
+
+    p = o.payments.first()
+    assert p.provider == "free"
+    assert p.amount == o.total
+    assert p.state == "confirmed"
 
 
 @pytest.mark.django_db
@@ -1803,3 +1832,8 @@ def test_order_create_paid_generate_invoice(token_client, organizer, event, item
     assert resp.status_code == 201
     o = Order.objects.get(code=resp.data['code'])
     assert o.invoices.count() == 1
+
+    p = o.payments.first()
+    assert p.provider == "banktransfer"
+    assert p.amount == o.total
+    assert p.state == "confirmed"

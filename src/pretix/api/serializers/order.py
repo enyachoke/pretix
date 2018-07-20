@@ -7,6 +7,7 @@ from django.utils.translation import ugettext_lazy
 from django_countries.fields import Country
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from rest_framework.relations import SlugRelatedField
 from rest_framework.reverse import reverse
 
 from pretix.api.serializers.i18n import I18nAwareModelSerializer
@@ -14,7 +15,9 @@ from pretix.base.models import (
     Checkin, Invoice, InvoiceAddress, InvoiceLine, Order, OrderPosition,
     Question, QuestionAnswer,
 )
-from pretix.base.models.orders import CartPosition, OrderFee
+from pretix.base.models.orders import (
+    CartPosition, OrderFee, OrderPayment, OrderRefund,
+)
 from pretix.base.pdf import get_variables
 from pretix.base.signals import register_ticket_outputs
 
@@ -156,10 +159,42 @@ class OrderPositionSerializer(I18nAwareModelSerializer):
             self.fields.pop('pdf_data')
 
 
+class OrderPaymentTypeField(serializers.Field):
+    # TODO: Remove after pretix 2.2
+    def to_representation(self, instance: Order):
+        t = None
+        for p in instance.payments.all():
+            t = p.provider
+        return t
+
+
+class OrderPaymentDateField(serializers.Field):
+    # TODO: Remove after pretix 2.2
+    def to_representation(self, instance: Order):
+        t = None
+        for p in instance.payments.all():
+            t = p.payment_date or t
+        return t
+
+
 class OrderFeeSerializer(I18nAwareModelSerializer):
     class Meta:
         model = OrderFee
         fields = ('fee_type', 'value', 'description', 'internal_type', 'tax_rate', 'tax_value', 'tax_rule')
+
+
+class OrderPaymentSerializer(I18nAwareModelSerializer):
+    class Meta:
+        model = OrderPayment
+        fields = ('local_id', 'state', 'amount', 'created', 'payment_date', 'provider')
+
+
+class OrderRefundSerializer(I18nAwareModelSerializer):
+    payment = SlugRelatedField(slug_field='local_id', read_only=True)
+
+    class Meta:
+        model = OrderRefund
+        fields = ('local_id', 'state', 'source', 'amount', 'payment', 'created', 'execution_date', 'provider')
 
 
 class OrderSerializer(I18nAwareModelSerializer):
@@ -167,12 +202,16 @@ class OrderSerializer(I18nAwareModelSerializer):
     positions = OrderPositionSerializer(many=True)
     fees = OrderFeeSerializer(many=True)
     downloads = OrderDownloadsField(source='*')
+    payments = OrderPaymentSerializer(many=True)
+    refunds = OrderRefundSerializer(many=True)
+    payment_date = OrderPaymentDateField(source='*')
+    payment_provider = OrderPaymentTypeField(source='*')
 
     class Meta:
         model = Order
         fields = ('code', 'status', 'secret', 'email', 'locale', 'datetime', 'expires', 'payment_date',
                   'payment_provider', 'fees', 'total', 'comment', 'invoice_address', 'positions', 'downloads',
-                  'checkin_attention', 'last_modified')
+                  'checkin_attention', 'last_modified', 'payments', 'refunds')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -467,14 +506,33 @@ class OrderCreateSerializer(I18nAwareModelSerializer):
             order.set_expires(subevents=[p['subevent'] for p in positions_data])
             order.total = sum([p['price'] for p in positions_data]) + sum([f['value'] for f in fees_data], Decimal('0.00'))
             order.meta_info = "{}"
+            order.save()
+
             if order.total == Decimal('0.00') and validated_data.get('status') != Order.STATUS_PAID:
                 order.payment_provider = 'free'
                 order.status = Order.STATUS_PAID
+                order.save()
+                order.payments.create(
+                    amount=order.total, provider='free', state=OrderPayment.PAYMENT_STATE_CONFIRMED
+                )
             elif order.payment_provider == "free" and order.total != Decimal('0.00'):
                 raise ValidationError('You cannot use the "free" payment provider for non-free orders.')
-            if validated_data.get('status') == Order.STATUS_PAID:
-                order.payment_date = now()
-            order.save()
+            elif validated_data.get('status') == Order.STATUS_PAID:
+                order.payments.create(
+                    amount=order.total,
+                    provider=validated_data.get('payment_provider', 'manual'),
+                    info=validated_data.get('payment_info', '{}'),
+                    payment_date=now(),
+                    state=OrderPayment.PAYMENT_STATE_CONFIRMED
+                )
+            elif validated_data.get('payment_provider'):
+                order.payments.create(
+                    amount=order.total,
+                    provider=validated_data.get('payment_provider', 'manual'),
+                    info=validated_data.get('payment_info', '{}'),
+                    state=OrderPayment.PAYMENT_STATE_CREATED
+                )
+
             if ia:
                 ia.order = order
                 ia.save()

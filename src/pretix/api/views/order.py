@@ -185,7 +185,6 @@ class OrderViewSet(CreateModelMixin, viewsets.ReadOnlyModelViewSet):
             )
 
         order.status = Order.STATUS_PENDING
-        order.payment_manual = True
         order.save()
         order.log_action(
             'pretix.event.order.unpaid',

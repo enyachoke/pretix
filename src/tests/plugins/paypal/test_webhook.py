@@ -26,7 +26,7 @@ def env():
         code='FOOBAR', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PAID,
         datetime=now(), expires=now() + timedelta(days=10),
-        total=Decimal('13.37'), payment_provider='paypal',
+        total=Decimal('13.37'),
         payment_info=json.dumps({
             "id": "PAY-5YK922393D847794YKER7MUI",
             "create_time": "2013-02-19T22:01:53Z",

@@ -33,7 +33,7 @@ def env():
         code='FOO', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING,
         datetime=now(), expires=now() + timedelta(days=10),
-        total=14, payment_provider='banktransfer', locale='en'
+        total=14, locale='en'
     )
     ticket = Item.objects.create(event=event, name='Early-bird ticket',
                                  category=None, default_price=23,
@@ -688,7 +688,7 @@ class OrderChangeTests(SoupTest):
             code='FOO', event=self.event, email='dummy@dummy.test',
             status=Order.STATUS_PENDING,
             datetime=now(), expires=now() + timedelta(days=10),
-            total=Decimal('46.00'), payment_provider='banktransfer'
+            total=Decimal('46.00'),
         )
         self.tr7 = self.event.tax_rules.create(rate=Decimal('7.00'))
         self.tr19 = self.event.tax_rules.create(rate=Decimal('19.00'))

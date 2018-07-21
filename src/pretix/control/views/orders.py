@@ -125,10 +125,6 @@ class OrderView(EventPermissionRequiredMixin, DetailView):
         )
         return ctx
 
-    @cached_property
-    def payment_provider(self):
-        return self.request.event.get_payment_providers().get(self.order.payment_provider)
-
     def get_order_url(self):
         return reverse('control:event.order', kwargs={
             'event': self.request.event.slug,
@@ -145,7 +141,6 @@ class OrderDetail(OrderView):
         ctx = super().get_context_data(**kwargs)
         ctx['items'] = self.get_items()
         ctx['event'] = self.request.event
-        ctx['payment_provider'] = self.payment_provider
         ctx['payments'] = self.order.payments.order_by('-created')
         ctx['refunds'] = self.order.refunds.select_related('payment').order_by('-created')
         for p in ctx['payments']:
@@ -646,7 +641,6 @@ class OrderTransition(OrderView):
             messages.success(self.request, _('The order has been canceled.'))
         elif self.order.status == Order.STATUS_PAID and to == 'n':
             self.order.status = Order.STATUS_PENDING
-            self.order.payment_manual = True
             self.order.save()
             self.order.log_action('pretix.event.order.unpaid', user=self.request.user)
             messages.success(self.request, _('The order has been marked as not paid.'))

@@ -1148,7 +1148,7 @@ class CheckinListTestCase(TestCase):
             code='FOO', event=cls.event, email='dummy@dummy.test',
             status=Order.STATUS_PAID,
             datetime=now(), expires=now() + timedelta(days=10),
-            total=Decimal("30"), payment_provider='banktransfer', locale='en'
+            total=Decimal("30"), locale='en'
         )
         OrderPosition.objects.create(
             order=o,
@@ -1175,7 +1175,7 @@ class CheckinListTestCase(TestCase):
             code='FOO', event=cls.event, email='dummy@dummy.test',
             status=Order.STATUS_PENDING,
             datetime=now(), expires=now() + timedelta(days=10),
-            total=Decimal("30"), payment_provider='banktransfer', locale='en'
+            total=Decimal("30"), locale='en'
         )
         op4 = OrderPosition.objects.create(
             order=o,

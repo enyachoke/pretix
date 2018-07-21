@@ -23,7 +23,6 @@ class WidgetCartTest(CartTestMixin, TestCase):
             datetime=now() - datetime.timedelta(days=3),
             expires=now() + datetime.timedelta(days=11),
             total=Decimal("23"),
-            payment_provider='banktransfer',
             locale='en'
         )
         self.ticket_pos = OrderPosition.objects.create(

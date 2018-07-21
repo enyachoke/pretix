@@ -18,7 +18,7 @@ def env():
         code='FOO', event=event,
         status=Order.STATUS_PENDING,
         datetime=now(), expires=now() + timedelta(days=10),
-        total=0, payment_provider='banktransfer'
+        total=0,
     )
     Team.objects.create(pk=1, organizer=o)
     return event, user, o

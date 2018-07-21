@@ -1181,7 +1181,6 @@ def test_order_create_payment_info_optional(token_client, organizer, event, item
     )
     assert resp.status_code == 201
     o = Order.objects.get(code=resp.data['code'])
-    assert not o.payment_info == "{}"
 
     res['payment_info'] = {
         'foo': {

@@ -82,12 +82,6 @@ class Order(LoggedModel):
     :type datetime: datetime
     :param expires: The date until this order has to be paid to guarantee the fulfillment
     :type expires: datetime
-    :param payment_date: The date of the payment completion (null if not yet paid)
-    :type payment_date: datetime
-    :param payment_provider: The payment provider selected by the user
-    :type payment_provider: str
-    :param payment_info: Arbitrary information stored by the payment provider
-    :type payment_info: str
     :param total: The total amount of the order, including the payment fee
     :type total: decimal.Decimal
     :param comment: An internal comment that will only be visible to staff, and never displayed to the user

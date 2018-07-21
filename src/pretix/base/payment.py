@@ -658,6 +658,12 @@ class ManualPayment(BasePaymentProvider):
     def is_implicit(self):
         return 'pretix.plugins.manualpayment' not in self.event.plugins
 
+    def is_allowed(self, request: HttpRequest, total: Decimal=None):
+        return 'pretix.plugins.manualpayment' in self.event.plugins
+
+    def order_change_allowed(self, order: Order):
+        return 'pretix.plugins.manualpayment' in self.event.plugins
+
     @property
     def public_name(self):
         return str(self.settings.get('public_name', as_type=LazyI18nString))

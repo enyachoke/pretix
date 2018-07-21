@@ -111,10 +111,7 @@
                                 <span class="fa fa-edit"></span>
                             </a>
                         </dd>
-                        {% if order.status == "p" %}
-                            <dt>{% trans "Payment date" %}</dt>
-                            <dd>{{ order.payment_date }}</dd>
-                        {% elif order.status == "n" %}
+                        {% if order.status == "n" %}
                             <dt>{% trans "Expiry date" %}</dt>
                             <dd>{{ order.expires }}</dd>
                         {% endif %}

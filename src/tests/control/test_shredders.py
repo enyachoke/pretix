@@ -29,7 +29,7 @@ class EventShredderTest(SoupTest):
             code='FOO', event=self.event1, email='dummy@dummy.test',
             status=Order.STATUS_PENDING,
             datetime=now(), expires=now(),
-            total=14, payment_provider='banktransfer', locale='en'
+            total=14, locale='en'
         )
 
         self.client.login(email='dummy@dummy.dummy', password='dummy')

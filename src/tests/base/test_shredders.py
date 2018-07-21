@@ -45,7 +45,7 @@ def order(event, item):
         code='FOO', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING,
         datetime=now(), expires=now() + timedelta(days=10),
-        total=14, payment_provider='banktransfer', locale='en'
+        total=14, locale='en'
     )
     event.settings.set('attendee_names_asked', True)
     event.settings.set('locales', ['en', 'de'])

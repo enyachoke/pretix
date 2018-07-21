@@ -147,13 +147,13 @@ def test_expiring(event):
         code='FOO', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING, locale='en',
         datetime=now(), expires=now() + timedelta(days=10),
-        total=0, payment_provider='banktransfer'
+        total=0,
     )
     o2 = Order.objects.create(
         code='FO2', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING, locale='en',
         datetime=now(), expires=now() - timedelta(days=10),
-        total=12, payment_provider='banktransfer'
+        total=12,
     )
     generate_invoice(o2)
     expire_orders(None)
@@ -171,7 +171,7 @@ def test_expiring_paid_invoice(event):
         code='FO2', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING, locale='en',
         datetime=now(), expires=now() - timedelta(days=10),
-        total=12, payment_provider='banktransfer'
+        total=12,
     )
     generate_invoice(o2)
     expire_orders(None)
@@ -192,13 +192,13 @@ def test_expiring_auto_disabled(event):
         code='FOO', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING,
         datetime=now(), expires=now() + timedelta(days=10),
-        total=0, payment_provider='banktransfer'
+        total=0,
     )
     o2 = Order.objects.create(
         code='FO2', event=event, email='dummy@dummy.test',
         status=Order.STATUS_PENDING,
         datetime=now(), expires=now() - timedelta(days=10),
-        total=0, payment_provider='banktransfer'
+        total=0,
     )
     expire_orders(None)
     o1 = Order.objects.get(id=o1.id)
@@ -221,7 +221,7 @@ class DownloadReminderTests(TestCase):
             status=Order.STATUS_PAID, locale='en',
             datetime=now(),
             expires=now() + timedelta(days=10),
-            total=Decimal('46.00'), payment_provider='banktransfer'
+            total=Decimal('46.00'),
         )
         self.ticket = Item.objects.create(event=self.event, name='Early-bird ticket',
                                           default_price=Decimal('23.00'), admission=True)

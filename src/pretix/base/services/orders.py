@@ -445,7 +445,7 @@ def _perform_order(event: str, payment_provider: str, position_ids: List[str],
             # send_mail will trigger PDF generation later
 
     if order.email:
-        if order.payment_provider == 'free':
+        if payment_provider == 'free':
             email_template = event.settings.mail_text_order_free
             log_entry = 'pretix.event.order.email.order_free'
         else:

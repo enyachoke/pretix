@@ -325,7 +325,6 @@ class Paypal(BasePaymentProvider):
             return
         elif f.cleaned_data.get('auto_refund') == 'manual':
             order = mark_order_refunded(order, user=request.user)
-            order.payment_manual = True
             order.save()
             return
 

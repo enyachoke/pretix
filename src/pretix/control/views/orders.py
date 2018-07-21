@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.files import File
 from django.core.urlresolvers import reverse
+from django.db import transaction
 from django.db.models import Count
 from django.http import FileResponse, Http404, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
@@ -241,12 +242,13 @@ class OrderPaymentCancel(OrderView):
 
     def post(self, *args, **kwargs):
         if self.payment.state in (OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING):
-            self.payment.state = OrderPayment.PAYMENT_STATE_CANCELED
-            self.payment.save()
-            self.order.log_action('pretix.event.order.payment.canceled', {
-                'local_id': self.payment.local_id,
-                'provider': self.payment.provider,
-            }, user=self.request.user)
+            with transaction.atomic():
+                self.payment.state = OrderPayment.PAYMENT_STATE_CANCELED
+                self.payment.save()
+                self.order.log_action('pretix.event.order.payment.canceled', {
+                    'local_id': self.payment.local_id,
+                    'provider': self.payment.provider,
+                }, user=self.request.user)
             messages.error(self.request, _('This payment has been canceled.'))
         else:
             messages.error(self.request, _('This payment can not be canceled at the moment.'))
@@ -266,13 +268,16 @@ class OrderRefundCancel(OrderView):
         return get_object_or_404(self.order.refunds, pk=self.kwargs['refund'])
 
     def post(self, *args, **kwargs):
-        self.refund.state = OrderRefund.REFUND_STATE_CANCELED
-        self.refund.save()
-        self.order.log_action('pretix.event.order.refund.canceled', {
-            'local_id': self.payment.local_id,
-            'provider': self.payment.provider,
-        }, user=self.request.user)
-        messages.success(self.request, _('The refund has been canceled.'))
+        if self.refund.state in (OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT,
+                                 OrderRefund.REFUND_STATE_EXTERNAL):
+            with transaction.atomic():
+                self.refund.state = OrderRefund.REFUND_STATE_CANCELED
+                self.refund.save()
+                self.order.log_action('pretix.event.order.refund.canceled', {
+                    'local_id': self.refund.local_id,
+                    'provider': self.refund.provider,
+                }, user=self.request.user)
+            messages.success(self.request, _('The refund has been canceled.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))
         return redirect(self.get_order_url())
@@ -291,20 +296,21 @@ class OrderRefundProcess(OrderView):
         return get_object_or_404(self.order.refunds, pk=self.kwargs['refund'])
 
     def post(self, *args, **kwargs):
-        self.refund.done()
+        if self.refund.state == OrderRefund.REFUND_STATE_EXTERNAL:
+            self.refund.done(user=self.request.user)
 
-        if self.request.POST.get("action") == "r":
-            mark_order_refunded(self.order, user=self.request.user)
-        else:
-            self.order.status = Order.STATUS_PENDING
-            self.order.set_expires(
-                now(),
-                self.order.event.subevents.filter(
-                    id__in=self.order.positions.values_list('subevent_id', flat=True))
-            )
-            self.order.save()
+            if self.request.POST.get("action") == "r":
+                mark_order_refunded(self.order, user=self.request.user)
+            else:
+                self.order.status = Order.STATUS_PENDING
+                self.order.set_expires(
+                    now(),
+                    self.order.event.subevents.filter(
+                        id__in=self.order.positions.values_list('subevent_id', flat=True))
+                )
+                self.order.save()
 
-        messages.success(self.request, _('The refund has been processed.'))
+            messages.success(self.request, _('The refund has been processed.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))
         return redirect(self.get_order_url())
@@ -326,7 +332,8 @@ class OrderRefundDone(OrderView):
         return get_object_or_404(self.order.refunds, pk=self.kwargs['refund'])
 
     def post(self, *args, **kwargs):
-        self.refund.done()
+        if self.refund.state in (OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT):
+            self.refund.done(user=self.request.user)
         messages.success(self.request, _('The refund has been marked as done.'))
         if "next" in self.request.GET and is_safe_url(self.request.GET.get("next")):
             return redirect(self.request.GET.get("next"))
@@ -353,24 +360,26 @@ class OrderPaymentConfirm(OrderView):
         )
 
     def post(self, *args, **kwargs):
-        if not self.mark_paid_form.is_valid():
-            return render(self.request, 'pretixcontrol/order/pay_complete.html', {
-                'form': self.mark_paid_form,
-                'order': self.order,
-            })
-        try:
-            self.payment.confirm(user=self.request.user,
-                                 count_waitinglist=False,
-                                 force=self.mark_paid_form.cleaned_data.get('force', False))
-        except Quota.QuotaExceededException as e:
-            messages.error(self.request, str(e))
-        except PaymentException as e:
-            messages.error(self.request, str(e))
-        except SendMailException:
-            messages.warning(self.request, _('The payment has been marked as complete, but we were unable to send a '
-                                             'confirmation mail.'))
-        else:
-            messages.success(self.request, _('The payment has been marked as complete.'))
+        if self.payment.state in (OrderPayment.PAYMENT_STATE_CREATED, OrderPayment.PAYMENT_STATE_PENDING):
+            if not self.mark_paid_form.is_valid():
+                return render(self.request, 'pretixcontrol/order/pay_complete.html', {
+                    'form': self.mark_paid_form,
+                    'order': self.order,
+                })
+            try:
+                self.payment.confirm(user=self.request.user,
+                                     count_waitinglist=False,
+                                     force=self.mark_paid_form.cleaned_data.get('force', False))
+            except Quota.QuotaExceededException as e:
+                messages.error(self.request, str(e))
+            except PaymentException as e:
+                messages.error(self.request, str(e))
+            except SendMailException:
+                messages.warning(self.request,
+                                 _('The payment has been marked as complete, but we were unable to send a '
+                                   'confirmation mail.'))
+            else:
+                messages.success(self.request, _('The payment has been marked as complete.'))
         return redirect(self.get_order_url())
 
     def get(self, *args, **kwargs):
@@ -1061,9 +1070,7 @@ class OrderModifyInformation(OrderQuestionsViewMixin, OrderView):
         self.order.log_action('pretix.event.order.modified', {
             'invoice_data': self.invoice_form.cleaned_data,
             'data': [{
-                k: (f.cleaned_data.get(k).name
-                    if isinstance(f.cleaned_data.get(k), File)
-                    else f.cleaned_data.get(k))
+                k: (f.cleaned_data.get(k).name if isinstance(f.cleaned_data.get(k), File) else f.cleaned_data.get(k))
                 for k in f.changed_data
             } for f in self.forms]
         }, user=request.user)

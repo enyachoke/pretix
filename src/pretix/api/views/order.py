@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.db.models.functions import Concat
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from django.utils.timezone import make_aware, now
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import serializers, status, viewsets
@@ -19,11 +20,12 @@ from rest_framework.response import Response
 
 from pretix.api.models import OAuthAccessToken
 from pretix.api.serializers.order import (
-    InvoiceSerializer, OrderCreateSerializer, OrderPositionSerializer,
-    OrderSerializer,
+    InvoiceSerializer, OrderCreateSerializer, OrderPaymentSerializer,
+    OrderPositionSerializer, OrderRefundSerializer, OrderSerializer,
 )
 from pretix.base.models import (
-    Invoice, Order, OrderPayment, OrderPosition, Quota, TeamAPIToken,
+    Invoice, Order, OrderPayment, OrderPosition, OrderRefund, Quota,
+    TeamAPIToken,
 )
 from pretix.base.payment import PaymentException
 from pretix.base.services.invoices import (
@@ -377,6 +379,175 @@ class OrderPositionViewSet(viewsets.ReadOnlyModelViewSet):
                 provider.identifier, ct.extension
             )
             return resp
+
+
+class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = OrderPaymentSerializer
+    queryset = OrderPayment.objects.none()
+    permission = 'can_view_orders'
+    write_permission = 'can_change_orders'
+    lookup_field = 'local_id'
+
+    def get_queryset(self):
+        order = get_object_or_404(Order, code=self.kwargs['order'], event=self.request.event)
+        return order.payments.all()
+
+    @detail_route(methods=['POST'])
+    def confirm(self, request, **kwargs):
+        payment = self.get_object()
+        force = request.data.get('force', False)
+
+        if payment.state not in (OrderPayment.PAYMENT_STATE_PENDING, OrderPayment.PAYMENT_STATE_CREATED):
+            return Response({'detail': 'Invalid state of payment'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payment.confirm(user=self.request.user if self.request.user.is_authenticated else None,
+                            auth=self.request.auth,
+                            count_waitinglist=False,
+                            force=force)
+        except Quota.QuotaExceededException as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except PaymentException as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except SendMailException:
+            pass
+        return self.retrieve(request, [], **kwargs)
+
+    @detail_route(methods=['POST'])
+    def refund(self, request, **kwargs):
+        payment = self.get_object()
+        amount = serializers.DecimalField(max_digits=10, decimal_places=2).to_internal_value(
+            request.data.get('amount', str(payment.amount))
+        )
+        mark_refunded = request.data.get('mark_refunded', False)
+
+        if payment.state != OrderPayment.PAYMENT_STATE_CONFIRMED:
+            return Response({'detail': 'Invalid state of payment'}, status=status.HTTP_400_BAD_REQUEST)
+
+        full_refund_possible = payment.payment_provider.payment_refund_supported(payment)
+        partial_refund_possible = payment.payment_provider.payment_partial_refund_supported(payment)
+        available_amount = payment.amount - payment.refunded_amount
+
+        if amount <= 0:
+            return Response({'amount': ['Invalid refund amount.']}, status=status.HTTP_400_BAD_REQUEST)
+        if amount > available_amount:
+            return Response({'amount': ['Invalid refund amount, only {} are available to refund.'.format(available_amount)]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if amount != payment.amount and not partial_refund_possible:
+            return Response({'amount': ['Partial refund not available for this payment method.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if amount == payment.amount and not full_refund_possible:
+            return Response({'amount': ['Full refund not available for this payment method.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+        r = payment.order.refunds.create(
+            payment=payment,
+            source=OrderRefund.REFUND_SOURCE_ADMIN,
+            state=OrderRefund.REFUND_STATE_CREATED,
+            amount=amount,
+            provider=payment.provider
+        )
+
+        try:
+            r.payment_provider.execute_refund(r)
+        except PaymentException as e:
+            r.state = OrderRefund.REFUND_STATE_FAILED
+            r.save()
+            return Response({'detail': 'External error: {}'.format(str(e))},
+                            status=status.HTTP_400_BAD_REQUEST)
+        else:
+            payment.order.log_action('pretix.event.order.refund.created', {
+                'local_id': r.local_id,
+                'provider': r.provider,
+            }, user=self.request.user if self.request.user.is_authenticated else None, auth=self.request.auth)
+            if payment.order.pending_sum > 0:
+                if mark_refunded:
+                    mark_order_refunded(payment.order, user=self.request.user if self.request.user.is_authenticated else None,
+                                        auth=self.request.auth)
+                else:
+                    payment.order.status = Order.STATUS_PENDING
+                    payment.order.set_expires(
+                        now(),
+                        payment.order.event.subevents.filter(
+                            id__in=payment.order.positions.values_list('subevent_id', flat=True))
+                    )
+                    payment.order.save()
+            return Response(OrderRefundSerializer(r).data, status=status.HTTP_200_OK)
+
+    @detail_route(methods=['POST'])
+    def cancel(self, request, **kwargs):
+        payment = self.get_object()
+
+        if payment.state not in (OrderPayment.PAYMENT_STATE_PENDING, OrderPayment.PAYMENT_STATE_CREATED):
+            return Response({'detail': 'Invalid state of payment'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            payment.state = OrderPayment.PAYMENT_STATE_CANCELED
+            payment.save()
+            payment.order.log_action('pretix.event.order.payment.canceled', {
+                'local_id': payment.local_id,
+                'provider': payment.provider,
+            }, user=self.request.user if self.request.user.is_authenticated else None, auth=self.request.auth)
+        return self.retrieve(request, [], **kwargs)
+
+
+class RefundViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = OrderRefundSerializer
+    queryset = OrderRefund.objects.none()
+    permission = 'can_view_orders'
+    write_permission = 'can_change_orders'
+    lookup_field = 'local_id'
+
+    def get_queryset(self):
+        order = get_object_or_404(Order, code=self.kwargs['order'], event=self.request.event)
+        return order.refunds.all()
+
+    @detail_route(methods=['POST'])
+    def cancel(self, request, **kwargs):
+        refund = self.get_object()
+
+        if refund.state not in (OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT,
+                                OrderRefund.REFUND_STATE_EXTERNAL):
+            return Response({'detail': 'Invalid state of refund'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            refund.state = OrderRefund.REFUND_STATE_CANCELED
+            refund.save()
+            refund.order.log_action('pretix.event.order.refund.canceled', {
+                'local_id': refund.local_id,
+                'provider': refund.provider,
+            }, user=self.request.user if self.request.user.is_authenticated else None, auth=self.request.auth)
+        return self.retrieve(request, [], **kwargs)
+
+    @detail_route(methods=['POST'])
+    def process(self, request, **kwargs):
+        refund = self.get_object()
+
+        if refund.state != OrderRefund.REFUND_STATE_EXTERNAL:
+            return Response({'detail': 'Invalid state of refund'}, status=status.HTTP_400_BAD_REQUEST)
+
+        refund.done(user=self.request.user if self.request.user.is_authenticated else None, auth=self.request.auth)
+        if request.data.get('mark_refunded', False):
+            mark_order_refunded(refund.order, user=self.request.user if self.request.user.is_authenticated else None,
+                                auth=self.request.auth)
+        else:
+            refund.order.status = Order.STATUS_PENDING
+            refund.order.set_expires(
+                now(),
+                refund.order.event.subevents.filter(
+                    id__in=refund.order.positions.values_list('subevent_id', flat=True))
+            )
+            refund.order.save()
+        return self.retrieve(request, [], **kwargs)
+
+    @detail_route(methods=['POST'])
+    def done(self, request, **kwargs):
+        refund = self.get_object()
+
+        if refund.state not in (OrderRefund.REFUND_STATE_CREATED, OrderRefund.REFUND_STATE_TRANSIT):
+            return Response({'detail': 'Invalid state of refund'}, status=status.HTTP_400_BAD_REQUEST)
+
+        refund.done(user=self.request.user if self.request.user.is_authenticated else None, auth=self.request.auth)
+        return self.retrieve(request, [], **kwargs)
 
 
 class InvoiceFilter(FilterSet):

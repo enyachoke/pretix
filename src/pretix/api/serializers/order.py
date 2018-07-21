@@ -168,13 +168,15 @@ class OrderPaymentTypeField(serializers.Field):
         return t
 
 
-class OrderPaymentDateField(serializers.Field):
+class OrderPaymentDateField(serializers.DateField):
     # TODO: Remove after pretix 2.2
     def to_representation(self, instance: Order):
         t = None
         for p in instance.payments.all():
             t = p.payment_date or t
-        return t
+        if t:
+
+            return super().to_representation(t.date())
 
 
 class OrderFeeSerializer(I18nAwareModelSerializer):

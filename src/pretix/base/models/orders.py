@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Union
 import dateutil
 import pytz
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import (
     Case, Exists, F, Max, OuterRef, Q, Subquery, Sum, Value, When,
 )
@@ -856,7 +856,7 @@ class OrderPayment(models.Model):
     )
 
     class Meta:
-        ordering = ('created',)
+        ordering = ('local_id',)
 
     @property
     def info_data(self):
@@ -1134,6 +1134,9 @@ class OrderRefund(models.Model):
         null=True, blank=True
     )
 
+    class Meta:
+        ordering = ('local_id',)
+
     @property
     def info_data(self):
         """
@@ -1153,6 +1156,7 @@ class OrderRefund(models.Model):
         """
         return self.order.event.get_payment_providers().get(self.provider)
 
+    @transaction.atomic
     def done(self, user=None, auth=None):
         """
         Marks the refund as complete. This does not modify the state of the order.

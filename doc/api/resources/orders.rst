@@ -211,8 +211,8 @@ payment_date                          datetime                   Date and time o
 provider                              string                     Identification string of the payment provider
 ===================================== ========================== =======================================================
 
-Order endpoints
----------------
+List of all orders
+------------------
 
 .. versionchanged:: 1.15
 
@@ -350,6 +350,9 @@ Order endpoints
    :statuscode 401: Authentication failure
    :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
 
+Fetching individual orders
+--------------------------
+
 .. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/
 
    Returns information on one order, identified by its order code.
@@ -466,6 +469,9 @@ Order endpoints
    :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
    :statuscode 404: The requested order does not exist.
 
+Order ticket download
+---------------------
+
 .. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/download/(output)/
 
    Download tickets for an order, identified by its order code. Depending on the chosen output, the response might
@@ -506,6 +512,9 @@ Order endpoints
    :statuscode 404: The requested order or output provider does not exist.
    :statuscode 409: The file is not yet ready and will now be prepared. Retry the request after waiting for a few
                           seconds.
+
+Creating orders
+---------------
 
 .. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/
 
@@ -684,6 +693,9 @@ Order endpoints
    :statuscode 401: Authentication failure
    :statuscode 403: The requested organizer/event does not exist **or** you have no permission to create this
          order.
+
+Order state operations
+----------------------
 
 .. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/mark_paid/
 
@@ -920,8 +932,8 @@ Order endpoints
    :statuscode 404: The requested order does not exist.
 
 
-Order position endpoints
-------------------------
+List of all order positions
+---------------------------
 
 .. versionchanged:: 1.15
 
@@ -1025,6 +1037,9 @@ Order position endpoints
    :statuscode 401: Authentication failure
    :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
 
+Fetching individual positions
+-----------------------------
+
 .. http:get:: /api/v1/organizers/(organizer)/events/(event)/orderpositions/(id)/
 
    Returns information on one order position, identified by its internal ID.
@@ -1093,6 +1108,9 @@ Order position endpoints
    :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
    :statuscode 404: The requested order position does not exist.
 
+Order position ticket download
+------------------------------
+
 .. http:get:: /api/v1/organizers/(organizer)/events/(event)/orderpositions/(id)/download/(output)/
 
    Download tickets for one order position, identified by its internal ID.
@@ -1134,3 +1152,413 @@ Order position endpoints
    :statuscode 404: The requested order position or download provider does not exist.
    :statuscode 409: The file is not yet ready and will now be prepared. Retry the request after waiting for a few
                     seconds.
+
+
+Order payment endpoints
+-----------------------
+
+.. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/payments/
+
+   Returns a list of all payments for an order.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      GET /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/payments/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "local_id": 1,
+            "state": "confirmed",
+            "amount": "23.00",
+            "created": "2017-12-01T10:00:00Z",
+            "payment_date": "2017-12-04T12:13:12Z",
+            "provider": "banktransfer"
+          }
+        ]
+      }
+
+   :query integer page: The page number in case of a multi-page result set, default is 1
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param order: The ``code`` field of the order to fetch
+   :statuscode 200: no error
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order does not exist.
+
+.. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/payments/(local_id)/
+
+   Returns information on one payment, identified by its order-local ID.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      GET /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/payments/1/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "confirmed",
+        "amount": "23.00",
+        "created": "2017-12-01T10:00:00Z",
+        "payment_date": "2017-12-04T12:13:12Z",
+        "provider": "banktransfer"
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the payment to fetch
+   :statuscode 200: no error
+       :statuscode 401: Authentication failure
+       :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or payment does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/payments/(local_id)/confirm/
+
+   Marks a payment as confirmed. Only allowed in states ``pending`` and ``created``.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/payments/1/confirm/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+      Content-Type: application/json
+
+      {"force": false}
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "confirmed",
+        ...
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the payment to modify
+   :statuscode 200: no error
+   :statuscode 400: Invalid request or payment state
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or payment does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/payments/(local_id)/cancel/
+
+   Marks a payment as canceled. Only allowed in states ``pending`` and ``created``.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/payments/1/cancel/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "canceled",
+        ...
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the payment to modify
+   :statuscode 200: no error
+       :statuscode 400: Invalid request or payment state
+       :statuscode 401: Authentication failure
+       :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or payment does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/payments/(local_id)/refund/
+
+   Create and execute a manual refund. Only available in ``confirmed`` state. Returns a refund resource, not
+   a payment resource!
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/payments/1/refund/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+      Content-Type: application/json
+
+      {
+        "amount": "23.00",
+        "mark_refunded": false
+      }
+
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "source": "admin",
+        "state": "done",
+        ...
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the payment to modify
+   :statuscode 200: no error
+   :statuscode 400: Invalid request, payment state, or operation not supported by the payment provider
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or payment does not exist.
+
+
+Order refund endpoints
+----------------------
+
+.. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/refunds/
+
+   Returns a list of all refunds for an order.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      GET /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/refunds/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "local_id": 1,
+            "state": "done",
+            "source": "admin",
+            "amount": "23.00",
+            "payment": 1,
+            "created": "2017-12-01T10:00:00Z",
+            "execution_date": "2017-12-04T12:13:12Z",
+            "provider": "banktransfer"
+          }
+        ]
+      }
+
+   :query integer page: The page number in case of a multi-page result set, default is 1
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param order: The ``code`` field of the order to fetch
+   :statuscode 200: no error
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order does not exist.
+
+.. http:get:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/refunds/(local_id)/
+
+   Returns information on one refund, identified by its order-local ID.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      GET /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/refunds/1/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "done",
+        "source": "admin",
+        "amount": "23.00",
+        "payment": 1,
+        "created": "2017-12-01T10:00:00Z",
+        "execution_date": "2017-12-04T12:13:12Z",
+        "provider": "banktransfer"
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the refund to fetch
+   :statuscode 200: no error
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or refund does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/refunds/(local_id)/done/
+
+   Marks a refund as completed. Only allowed in states ``transit`` and ``created``.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/refunds/1/done/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "done",
+        ....
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the refund to modify
+   :statuscode 200: no error
+   :statuscode 400: Invalid request or refund state
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or refund does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/refunds/(local_id)/process/
+
+   Acts on an external refund, either marks the order as refunded or pending. Only allowed in state ``external``.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/refunds/1/done/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+      Content-Type: application/json
+
+      {"mark_refunded": false}
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "done",
+        ....
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the refund to modify
+   :statuscode 200: no error
+   :statuscode 400: Invalid request or refund state
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or refund does not exist.
+
+.. http:post:: /api/v1/organizers/(organizer)/events/(event)/orders/(code)/refunds/(local_id)/cancel/
+
+   Marks a refund as canceled. Only allowed in states ``transit``, ``external``, and ``created``.
+
+   **Example request**:
+
+   .. sourcecode:: http
+
+      POST /api/v1/organizers/bigevents/events/sampleconf/orders/ABC12/refunds/1/cancel/ HTTP/1.1
+      Host: pretix.eu
+      Accept: application/json, text/javascript
+
+   **Example response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Vary: Accept
+      Content-Type: application/json
+
+      {
+        "local_id": 1,
+        "state": "canceled",
+        ....
+      }
+
+   :param organizer: The ``slug`` field of the organizer to fetch
+   :param event: The ``slug`` field of the event to fetch
+   :param code: The ``code`` field of the order to fetch
+   :param local_id: The ``local_id`` field of the refund to modify
+   :statuscode 200: no error
+   :statuscode 400: Invalid request or refund state
+   :statuscode 401: Authentication failure
+   :statuscode 403: The requested organizer/event does not exist **or** you have no permission to view this resource.
+   :statuscode 404: The requested order or refund does not exist.

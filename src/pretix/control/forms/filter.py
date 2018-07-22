@@ -7,8 +7,8 @@ from django.utils.timezone import now
 from django.utils.translation import pgettext_lazy, ugettext_lazy as _
 
 from pretix.base.models import (
-    Checkin, Event, Invoice, Item, Order, OrderPosition, OrderRefund,
-    Organizer, Question, QuestionAnswer, SubEvent,
+    Checkin, Event, Invoice, Item, Order, OrderPayment, OrderPosition,
+    OrderRefund, Organizer, Question, QuestionAnswer, SubEvent,
 )
 from pretix.base.signals import register_payment_providers
 from pretix.control.forms.widgets import Select2
@@ -159,7 +159,14 @@ class OrderFilterForm(FilterForm):
             qs = qs.order_by(self.get_order_by())
 
         if fdata.get('provider'):
-            qs = qs.filter(payment_provider=fdata.get('provider'))
+            qs = qs.annotate(
+                has_payment_with_provider=Exists(
+                    OrderPayment.objects.filter(
+                        Q(order=OuterRef('pk')) & Q(provider=fdata.get('provider'))
+                    )
+                )
+            )
+            qs = qs.filter(has_payment_with_provider=1)
 
         return qs
 

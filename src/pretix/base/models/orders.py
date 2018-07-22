@@ -136,23 +136,6 @@ class Order(LoggedModel):
     expires = models.DateTimeField(
         verbose_name=_("Expiration date")
     )
-    payment_date = models.DateTimeField(
-        verbose_name=_("Payment date"),
-        null=True, blank=True
-    )
-    payment_provider = models.CharField(
-        null=True, blank=True,
-        max_length=255,
-        verbose_name=_("Payment provider")
-    )
-    payment_info = models.TextField(
-        verbose_name=_("Payment information"),
-        null=True, blank=True
-    )
-    payment_manual = models.BooleanField(
-        verbose_name=_("Payment state was manually modified"),
-        default=False
-    )
     total = models.DecimalField(
         decimal_places=2, max_digits=10,
         verbose_name=_("Total amount")
